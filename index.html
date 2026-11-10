@@ -14,8 +14,8 @@
 :root{
   --paper:#D8D8D6;   /* 暖灰：窗口底/地板填充 */
   --gray:#B5B5B3;    /* 中灰：画布底/次级描边 */
-  --ink:#303030;     /* 深炭灰：页面底/标题条/墙体/文字 */
-  --acid:#B8E83E;    /* 荧光黄绿：选中/播放/绿色窗口/编号 */
+  --ink:#525252;     /* 深炭灰：页面底/标题条/墙体/文字 */
+  --acid:#B8E83E;    /* 荧光黄绿：选中/绿色窗口/编号 */
   --grid-minor:rgba(48,48,48,0.10);
   --grid-major:rgba(48,48,48,0.22);
 }
@@ -75,9 +75,9 @@ body::after{
 
 /* ---------- 三角形 PLAY 按钮（播放中变方块 STOP） ---------- */
 .play-tri{
-  width:64px; height:60px;
+  width:32px; height:30px;
   border:none; padding:0;
-  background:var(--acid);
+  background:var(--ink);
   clip-path:polygon(18% 5%, 18% 95%, 88% 50%);
   cursor:pointer;
 }
@@ -98,7 +98,7 @@ body::after{
   display:flex; flex-direction:column;
   background:var(--paper);
   border:1px solid var(--ink);
-  box-shadow:0 0 0 1px var(--gray);   /* 外层 1px 中灰描边 */
+  box-shadow:0 0 0 1px var(--acid);   /* 外层 1px 酸绿描边（用户指定：全部窗口） */
 }
 .titlebar{
   height:24px; flex:0 0 24px;
@@ -108,9 +108,8 @@ body::after{
   font-size:12px; letter-spacing:0.08em; text-transform:uppercase;
 }
 .titlebar .title-text{flex:1; white-space:nowrap; overflow:hidden}
-/* 绿色窗口（TRANSPORT / PLAYER）：标题条与边框用酸绿 */
-.win-acid .titlebar{background:var(--acid); color:var(--ink)}
-.win-acid{box-shadow:0 0 0 1px var(--acid)}
+/* 绿色窗口（TRANSPORT / PLAYER）：所有窗口外框均已为酸绿，此变体保留语义 */
+.win-acid .titlebar{background:var(--ink); color:var(--paper)}
 /* 标题条假按钮 [–][□][×] */
 .fake-btns{display:flex; gap:6px; flex:0 0 auto}
 .fake-btns span{color:var(--gray); cursor:default; line-height:1}
@@ -142,12 +141,12 @@ body::after{
 #aside .window{flex:1; min-height:0}
 #aside .win-brand{flex:0 0 64px}
 .brand-body{
-  padding:0;
+  padding:12px 0 0;   /* 标题略下沉，水平居中于 paper 方框（用户指定） */
   display:flex; align-items:center; justify-content:center;
 }
 .brand-text{
-  font-family:Georgia,'Times New Roman',serif;   /* 非斜体 */
-  font-size:20px; letter-spacing:1px;
+  font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;   /* 非衬线（用户指定） */
+  font-size:20px; letter-spacing:2px;
   color:var(--ink);
 }
 #stage{flex:1; min-height:0; display:flex}
@@ -187,6 +186,7 @@ body::after{
 .vol-row label{letter-spacing:0.08em}
 #volReadout{min-width:24px; text-align:right}
 .player-body{
+  padding-top:12px;   /* 播放键同理略下沉，居中于 paper 方框 */
   display:flex; align-items:center; justify-content:center;
   overflow:hidden;
 }
@@ -322,8 +322,7 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
 /* ============================================================
    ARCHISONIC: UNFINISHED TOUR — 脚本
    架构：docs/02-技术方案.md（§A–§H 分节）
-   已实现：M1 UI + M2 绘制与编辑（智能模式 / 撤销 / 删除 / 边界钳制）
-   待实现：M3 音频与播放（§C MAPPING / §D AUDIO / 播放高亮）
+   已实现：M1 UI + M2 绘制与编辑 + M3 音频与播放（PAD / 混响 / C 大调进行 / legato）
    ============================================================ */
 (function(){
 'use strict';
@@ -341,7 +340,7 @@ var MAX_UNDO = 100;            // 撤销栈上限
 var COL = {                    // 色板（docs/03）
   CANVAS: '#B5B5B3',           // 画布背景（2026-11-10 修订）
   FLOOR:  '#D8D8D6',           // 地板填充
-  WALL:   '#303030',           // 墙体
+  WALL:   '#525252',           // 墙体（随 --ink 用户调整）
   DIVIDER:'#B5B5B3',           // 墙体内侧分界线
   ACID:   '#B8E83E',           // 强调
   GRID_MINOR: 'rgba(48,48,48,0.10)',
@@ -358,6 +357,9 @@ var selection = null;          // 选中空间 id
 var drag = null;               // 拖拽上下文 {mode, startX, startY, moved, ...}
 var undoStack = [], redoStack = [];
 var CW = 0, CH = 0;            // 画布 CSS 尺寸（fitCanvas 刷新）
+var touring = false;           // 播放中
+var tourTimeline = [];         // 播放头时间线 [{id, t, dur}]（audio clock 绝对时间）
+var tourCurrentId = null;      // 当前发声空间 id（高亮用）
 
 /* 8 个缩放手柄（dx/dy = 缩放方向） */
 var HANDLES = [
@@ -366,9 +368,208 @@ var HANDLES = [
   {n:'sw',x:0,y:1,dx:-1,dy:1},{n:'w',x:0,y:0.5,dx:-1,dy:0}
 ];
 
-/* §C MAPPING — 连接判定 / 进行分配（M3 实现） */
+/* §C MAPPING — 连接判定 / 进行分配（docs/02 §3–§4） */
+var LOOP_PROGRESSION = ['Dm','G','C','Am'];
+var CHORD_MIDI = { C:[48,52,55], F:[48,53,57], Dm:[50,53,57], G:[50,55,59], Am:[57,60,64] };
+var TOUCH_EPS = 2;             // 共边判定容差 px（贴边 2px 内算连接）
 
-/* §D AUDIO — PAD / 混响 / 播放调度（M3 实现） */
+function buildProgression(n){
+  if (n === 1) return ['C'];
+  if (n === 2) return ['C','F'];
+  var out = [];
+  for (var i = 0; i < n; i++) out.push(LOOP_PROGRESSION[i % 4]);
+  return out;
+}
+function areConnected(a, b){
+  // 重叠
+  if (Math.max(a.x,b.x) < Math.min(a.x+a.w,b.x+b.w) &&
+      Math.max(a.y,b.y) < Math.min(a.y+a.h,b.y+b.h)) return true;
+  // 左右相贴（±2px 容差）+ 纵向区间严格相交
+  if (Math.abs(a.x+a.w-b.x) <= TOUCH_EPS || Math.abs(b.x+b.w-a.x) <= TOUCH_EPS){
+    if (Math.max(a.y,b.y) < Math.min(a.y+a.h,b.y+b.h)) return true;
+  }
+  // 上下相贴（±2px 容差）+ 横向区间严格相交
+  if (Math.abs(a.y+a.h-b.y) <= TOUCH_EPS || Math.abs(b.y+b.h-a.y) <= TOUCH_EPS){
+    if (Math.max(a.x,b.x) < Math.min(a.x+a.w,b.x+b.w)) return true;
+  }
+  return false;
+}
+
+/* §D AUDIO — PAD / 混响 / 播放调度（docs/02 §5–§8） */
+var audioCtx = null, masterGain = null, convolver = null, dryBus = null;
+var activeVoices = [];         // 活跃 voice 集合（上限 64）
+var MAX_VOICES = 64;
+
+function ensureAudio(){
+  if (!audioCtx){
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    audioCtx = new AC();
+    dryBus = audioCtx.createGain();
+    dryBus.gain.value = 0.8;
+    convolver = audioCtx.createConvolver();
+    convolver.buffer = makeImpulse(2.5);
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = Math.pow(doc.masterVol, 1.5) * 0.7;
+    var comp = audioCtx.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.ratio.value = 3; comp.knee.value = 12;
+    dryBus.connect(masterGain);
+    convolver.connect(masterGain);
+    masterGain.connect(comp);
+    comp.connect(audioCtx.destination);
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  document.getElementById('audioState').textContent = 'AUDIO: READY';
+  return true;
+}
+
+/* 程序化混响脉冲响应：2.5s 立体声指数衰减噪声 */
+function makeImpulse(seconds){
+  var rate = audioCtx.sampleRate;
+  var len = Math.max(1, Math.floor(rate * seconds));
+  var buf = audioCtx.createBuffer(2, len, rate);
+  for (var ch = 0; ch < 2; ch++){
+    var d = buf.getChannelData(ch);
+    for (var i = 0; i < len; i++){
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
+    }
+  }
+  return buf;
+}
+
+function midiToFreq(m){ return 440 * Math.pow(2, (m - 69) / 12); }
+
+/* PAD voice：每音 saw×2 失谐 + triangle 低八度，慢起音，经混响发送 */
+function playChord(midiNotes, t0, durSec, wetGain, release){
+  var end = t0 + durSec;
+  var oscs = [];
+  // 公共包络：attack 0.6s（慢、软、冲击力弱）→ sustain → release
+  var envGain = audioCtx.createGain();
+  envGain.gain.setValueAtTime(0, t0);
+  envGain.gain.linearRampToValueAtTime(1, t0 + 0.6);
+  envGain.gain.setValueAtTime(1, end);
+  envGain.gain.linearRampToValueAtTime(0, end + release);
+  // lowpass（900Hz）+ LFO 缓慢呼吸
+  var lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.5;
+  envGain.connect(lp);
+  var lfo = audioCtx.createOscillator();
+  var lfoG = audioCtx.createGain();
+  lfo.frequency.value = 0.3; lfoG.gain.value = 120;
+  lfo.connect(lfoG); lfoG.connect(lp.frequency);
+  lfo.start(t0); lfo.stop(end + release + 0.1);
+  // 振荡器
+  for (var i = 0; i < midiNotes.length; i++){
+    var f = midiToFreq(midiNotes[i]);
+    addOsc('sawtooth', f, 7, 0.11);
+    addOsc('sawtooth', f, -7, 0.11);
+    addOsc('triangle', f / 2, 0, 0.055);
+  }
+  function addOsc(type, freq, detune, g){
+    var o = audioCtx.createOscillator();
+    o.type = type; o.frequency.value = freq; o.detune.value = detune;
+    var og = audioCtx.createGain(); og.gain.value = g;
+    o.connect(og); og.connect(envGain);
+    o.start(t0); o.stop(end + release + 0.1);
+    oscs.push(o);
+  }
+  // 路由：dry 直通 + wet 送混响（面积决定强度）
+  var wet = audioCtx.createGain();
+  wet.gain.value = wetGain;
+  lp.connect(dryBus);
+  lp.connect(wet);
+  wet.connect(convolver);
+  // 登记 voice（STOP 时快衰减强停，无爆音）
+  activeVoices.push({
+    kill: function(){
+      var t = audioCtx.currentTime;
+      envGain.gain.cancelScheduledValues(t);
+      envGain.gain.setTargetAtTime(0, t, 0.03);
+      for (var k = 0; k < oscs.length; k++){
+        try { oscs[k].stop(t + 0.2); } catch (err) {}
+      }
+    }
+  });
+  if (activeVoices.length > MAX_VOICES){
+    var old = activeVoices.shift();
+    old.kill();
+  }
+}
+
+/* PLAY：快照 + 一次性绝对时间排程 */
+function startPlay(){
+  if (touring) return;
+  if (doc.spaces.length === 0) return;
+  if (!ensureAudio()) return;
+  var n = doc.spaces.length;
+  var prog = buildProgression(n);
+  var W = CW, H = CH;
+  var plan = [];
+  for (var i = 0; i < n; i++){
+    var s = doc.spaces[i];
+    var connectedNext = (i < n - 1) && areConnected(s, doc.spaces[i + 1]);
+    var wet = 0.15 + 0.65 * clamp(s.w * s.h / (W * H), 0, 1);   // 面积 → 混响强度
+    plan.push({ id: s.id, midi: CHORD_MIDI[prog[i]], wet: wet, legato: connectedNext });
+  }
+  var D = 3.0;                       // 每和弦时长
+  var t = audioCtx.currentTime + 0.2;
+  tourTimeline = [];
+  for (var j = 0; j < plan.length; j++){
+    var p = plan[j];
+    var release = p.legato ? 1.6 : 0.9;   // legato 尾音交叠；断开对更快收尾让出停顿
+    playChord(p.midi, t, D, p.wet, release);
+    tourTimeline.push({ id: p.id, t: t, dur: D });
+    t += p.legato ? (D - 0.35) : (D + 1.4); // 衔接重叠 0.35s / 断开停顿 0.5s
+  }
+  touring = true;
+  tourCurrentId = null;
+  setPlayUI(true);
+  requestRender();
+  tourFrame();
+}
+function stopPlay(){
+  if (!touring) return;
+  touring = false;
+  for (var i = 0; i < activeVoices.length; i++) activeVoices[i].kill();
+  activeVoices.length = 0;
+  tourTimeline = [];
+  tourCurrentId = null;
+  setPlayUI(false);
+  requestRender();
+}
+/* 播放高亮帧：线性扫时间线定位当前空间 */
+function tourFrame(){
+  if (!touring) return;
+  var now = audioCtx.currentTime;
+  var currentId = null, end = 0;
+  for (var i = 0; i < tourTimeline.length; i++){
+    var it = tourTimeline[i];
+    end = Math.max(end, it.t + it.dur);
+    if (now >= it.t && now < it.t + it.dur) currentId = it.id;
+  }
+  if (now > end + 1.8){     // 自然结束
+    touring = false;
+    tourTimeline = [];
+    tourCurrentId = null;
+    setPlayUI(false);
+    requestRender();
+    return;
+  }
+  tourCurrentId = currentId;
+  requestRender();
+  requestAnimationFrame(tourFrame);
+}
+function setPlayUI(on){
+  var btn = document.getElementById('playBtn');
+  if (on){
+    btn.classList.add('playing');
+    btn.textContent = 'STOP';
+  } else {
+    btn.classList.remove('playing');
+    btn.textContent = '';
+  }
+  refreshStatus();
+}
 
 /* §E RENDER — 画布渲染 */
 var canvas = null, ctx = null;
@@ -448,7 +649,7 @@ function drawSelection(s){
     var hx = s.x + s.w * hd.x - 3.5, hy = s.y + s.h * hd.y - 3.5;
     ctx.fillStyle = COL.ACID;
     ctx.fillRect(hx, hy, 7, 7);
-    ctx.strokeStyle = '#303030';
+    ctx.strokeStyle = '#525252';
     ctx.lineWidth = 1;
     ctx.strokeRect(hx + 0.5, hy + 0.5, 6, 6);
   }
@@ -477,7 +678,15 @@ function render(){
     var s = findSpace(selection);
     if (s) drawSelection(s);
   }
-  /* M3：播放高亮 在此绘制 */
+  /* 播放高亮：当前发声矩形酸绿描边 */
+  if (touring && tourCurrentId !== null){
+    var hs = findSpace(tourCurrentId);
+    if (hs){
+      ctx.strokeStyle = COL.ACID;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(hs.x - 1, hs.y - 1, hs.w + 2, hs.h + 2);
+    }
+  }
 }
 
 /* §F INPUT — 指针状态机（智能模式） */
@@ -527,6 +736,7 @@ ctx = canvas.getContext('2d');
 
 canvas.addEventListener('pointerdown', function(e){
   e.preventDefault();
+  ensureAudio();               // 首次手势解锁音频（浏览器自动播放策略）
   var hit = hitTest(e.offsetX, e.offsetY);
   drag = {
     mode: hit.type === 'handle' ? 'resizing' : (hit.type === 'body' ? 'moving' : 'creating'),
@@ -711,7 +921,7 @@ document.addEventListener('keydown', function(e){
     updateUI(); requestRender();
   } else if (e.key === ' '){
     e.preventDefault();
-    /* M3：PLAY/STOP 切换 */
+    if (touring) stopPlay(); else startPlay();
   }
 });
 
@@ -729,9 +939,14 @@ function updateUI(){
   var n = doc.spaces.length;
   document.getElementById('spacesCount').textContent = 'SPACES: ' + pad2(n);
   document.getElementById('emptyOverlay').style.display = (n === 0) ? 'flex' : 'none';
-  var selText = (selection !== null) ? 'SPACE ' + pad2(selectionIndex() + 1) + ' SELECTED' : 'READY';
-  document.getElementById('statusText').textContent = selText;
-  document.getElementById('statusTail').textContent = selText;
+  refreshStatus();
+}
+function refreshStatus(){
+  var txt = 'READY';
+  if (touring) txt = 'PLAYING';
+  else if (selection !== null) txt = 'SPACE ' + pad2(selectionIndex() + 1) + ' SELECTED';
+  document.getElementById('statusText').textContent = txt;
+  document.getElementById('statusTail').textContent = txt;
 }
 
 /* §H INIT — 启动序列 */
@@ -741,7 +956,15 @@ window.addEventListener('resize', fitCanvas);
 if (window.ResizeObserver){
   new ResizeObserver(fitCanvas).observe(document.getElementById('canvasBody'));
 }
-/* M3：PLAY 按钮 / VOLUME 滑杆接线、音频引擎、播放高亮 */
+/* PLAY 按钮与 VOLUME 滑杆接线 */
+document.getElementById('playBtn').addEventListener('click', function(){
+  if (touring) stopPlay(); else startPlay();
+});
+document.getElementById('volSlider').addEventListener('input', function(){
+  doc.masterVol = this.value / 100;
+  document.getElementById('volReadout').textContent = this.value;
+  if (masterGain) masterGain.gain.value = Math.pow(doc.masterVol, 1.5) * 0.7;
+});
 })();
 </script>
 </body>
