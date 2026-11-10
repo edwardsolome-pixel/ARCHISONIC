@@ -78,6 +78,8 @@
 
 - 开始菜单 OST 直接播放（用户指定）：去掉"CLICK ANYWHERE TO PLAY"提示文字，加载即 startOst()；若被浏览器自动播放策略拦截则首次点击静默兜底（无提示）
 
+- 修复 OST 自动播放失败（用户报告，双浏览器复现）：play() 返回 Promise，此前 try/catch 捕获不到异步拒绝且失败也置 ostStarted 导致点击兜底被跳过——现改为 Promise 成功才置位、window load 再试一次、pointerdown 静默兜底；浏览器自动播放策略对 file:// 同样限制，向用户提供 chrome://flags/#autoplay-policy 一次性设置方案
+
 ### 待办
 
 - [ ] M3 用户验收

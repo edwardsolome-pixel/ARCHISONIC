@@ -1465,11 +1465,18 @@ var ostStarted = false;
 ost.volume = 0.6;
 function startOst(){
   if (ostStarted) return;
-  ostStarted = true;
-  try { ost.play(); } catch (err) {}
+  var p = null;
+  try { p = ost.play(); } catch (err) { p = null; }
+  if (p && p.then){
+    // play() 返回 Promise：成功才标记已开始，失败保持可重试（修复兜底被跳过）
+    p.then(function(){ ostStarted = true; }, function(){ ostStarted = false; });
+  } else {
+    ostStarted = true;
+  }
 }
-startOst();   // 打开即直接播放（file:// 下多数浏览器允许）
-document.getElementById('startMenu').addEventListener('pointerdown', startOst);   // 若被浏览器拦截则首次点击静默兜底
+startOst();                                                     // 打开即尝试直接播放
+window.addEventListener('load', startOst);                       // 文档加载完成后再试一次
+document.getElementById('startMenu').addEventListener('pointerdown', startOst);   // 仍被浏览器拦截则首次点击静默兜底
 document.getElementById('enterBtn').addEventListener('click', function(){
   this.blur();
   ensureAudio();   // 该点击即手势：顺带解锁应用音频
