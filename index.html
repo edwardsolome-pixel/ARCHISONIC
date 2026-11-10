@@ -72,6 +72,9 @@ body::after{
 }
 .btn:hover{background:var(--gray)}
 .btn:active{transform:translateY(1px)}
+/* 音色选择按钮（TIMBRE 窗口） */
+.timbre-body{display:flex; flex-direction:column; gap:6px; padding:8px}
+.timbre-btn{width:100%; height:auto; padding:6px 8px; text-align:left; letter-spacing:0.05em}
 
 /* ---------- 三角形 PLAY 按钮（播放中变方块 STOP） ---------- */
 .play-tri{
@@ -262,6 +265,13 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
       <div class="titlebar"><span class="title-text"></span></div>
       <div class="window-body"></div>
     </div>
+    <div class="window" id="timbreWindow">
+      <div class="titlebar"><span class="title-text">TIMBRE</span></div>
+      <div class="window-body timbre-body">
+        <button class="btn timbre-btn btn-on" id="timbreClassic" type="button">古典主义</button>
+        <button class="btn timbre-btn" id="timbreModern" type="button">现代主义</button>
+      </div>
+    </div>
   </aside>
   <main id="stage">
     <div class="window floor-window">
@@ -359,12 +369,36 @@ var COL = {                    // 色板（docs/03）
   GRID_MAJOR: 'rgba(48,48,48,0.22)'
 };
 
+/* 音色表（TIMBRE 窗口切换；用户命名 2026-11-10） */
+var TIMBRES = {
+  classic: {   // 古典主义：PAD 软音色（慢起音、弱冲击、带呼吸感）
+    name: '古典主义',
+    oscs: [
+      {type:'sawtooth', mult:1,   detune:7,  gain:0.11},
+      {type:'sawtooth', mult:1,   detune:-7, gain:0.11},
+      {type:'triangle',mult:0.5,  detune:0,  gain:0.055}
+    ],
+    attack: 0.6, sustain: 1.0, decay: 0, cutoff: 900, q: 0.5, lfoRate: 0.3, lfoAmount: 120
+  },
+  modern: {    // 现代主义：80s 合成器 KEY（明亮锯齿 + 快起音，disco/house 色彩）
+    name: '现代主义',
+    oscs: [
+      {type:'sawtooth', mult:1,   detune:12,  gain:0.13},
+      {type:'sawtooth', mult:1,   detune:-12, gain:0.13},
+      {type:'square',   mult:1,   detune:0,   gain:0.06},
+      {type:'sawtooth', mult:2,   detune:5,   gain:0.035}
+    ],
+    attack: 0.02, sustain: 0.8, decay: 0.2, cutoff: 2300, q: 0.7, lfoRate: 0, lfoAmount: 0
+  }
+};
+
 /* §B STATE — 文档状态 */
 var doc = {
   spaces: [],                  // [{id, x, y, w, h}]，id 自增 = 创建顺序 = 播放顺序
   nextId: 1,
   masterVol: 0.7,
-  bpm: 120
+  bpm: 120,
+  timbre: 'classic'            // 'classic' 古典主义 | 'modern' 现代主义
 };
 var selection = null;          // 选中空间 id
 var drag = null;               // 拖拽上下文 {mode, startX, startY, moved, ...}
@@ -483,31 +517,39 @@ function playClick(t, accent){
   o.stop(t + 0.07);
 }
 
-/* PAD voice：每音 saw×2 失谐 + triangle 低八度，慢起音，经混响发送 */
+/* 和弦 voice：按当前音色配置合成（古典主义 PAD / 现代主义 80s KEY），经混响发送 */
 function playChord(midiNotes, t0, durSec, wetGain, release){
   var end = t0 + durSec;
+  var tm = TIMBRES[doc.timbre] || TIMBRES.classic;
   var oscs = [];
-  // 公共包络：attack 0.6s（慢、软、冲击力弱）→ sustain → release
+  // 公共包络：attack → sustain（可选衰减）→ release
   var envGain = audioCtx.createGain();
   envGain.gain.setValueAtTime(0, t0);
-  envGain.gain.linearRampToValueAtTime(1, t0 + 0.6);
-  envGain.gain.setValueAtTime(1, end);
+  envGain.gain.linearRampToValueAtTime(1, t0 + tm.attack);
+  if (tm.decay > 0){
+    envGain.gain.setTargetAtTime(tm.sustain, t0 + tm.attack, tm.decay);
+  }
+  envGain.gain.setValueAtTime(tm.sustain, end);
   envGain.gain.linearRampToValueAtTime(0, end + release);
-  // lowpass（900Hz）+ LFO 缓慢呼吸
+  // lowpass 滤波（按音色）
   var lp = audioCtx.createBiquadFilter();
-  lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.5;
+  lp.type = 'lowpass'; lp.frequency.value = tm.cutoff; lp.Q.value = tm.q;
   envGain.connect(lp);
-  var lfo = audioCtx.createOscillator();
-  var lfoG = audioCtx.createGain();
-  lfo.frequency.value = 0.3; lfoG.gain.value = 120;
-  lfo.connect(lfoG); lfoG.connect(lp.frequency);
-  lfo.start(t0); lfo.stop(end + release + 0.1);
-  // 振荡器
+  // 呼吸 LFO（仅 PAD 类音色）
+  if (tm.lfoAmount > 0){
+    var lfo = audioCtx.createOscillator();
+    var lfoG = audioCtx.createGain();
+    lfo.frequency.value = tm.lfoRate; lfoG.gain.value = tm.lfoAmount;
+    lfo.connect(lfoG); lfoG.connect(lp.frequency);
+    lfo.start(t0); lfo.stop(end + release + 0.1);
+  }
+  // 振荡器（按音色配置）
   for (var i = 0; i < midiNotes.length; i++){
     var f = midiToFreq(midiNotes[i]);
-    addOsc('sawtooth', f, 7, 0.11);
-    addOsc('sawtooth', f, -7, 0.11);
-    addOsc('triangle', f / 2, 0, 0.055);
+    for (var k = 0; k < tm.oscs.length; k++){
+      var spec = tm.oscs[k];
+      addOsc(spec.type, f * spec.mult, spec.detune, spec.gain);
+    }
   }
   function addOsc(type, freq, detune, g){
     var o = audioCtx.createOscillator();
@@ -1049,6 +1091,19 @@ window.addEventListener('resize', fitCanvas);
 if (window.ResizeObserver){
   new ResizeObserver(fitCanvas).observe(document.getElementById('canvasBody'));
 }
+/* TIMBRE 音色选择 */
+function setTimbreUI(){
+  document.getElementById('timbreClassic').classList.toggle('btn-on', doc.timbre === 'classic');
+  document.getElementById('timbreModern').classList.toggle('btn-on', doc.timbre === 'modern');
+}
+document.getElementById('timbreClassic').addEventListener('click', function(){
+  this.blur(); doc.timbre = 'classic'; setTimbreUI();
+});
+document.getElementById('timbreModern').addEventListener('click', function(){
+  this.blur(); doc.timbre = 'modern'; setTimbreUI();
+});
+setTimbreUI();
+
 /* PLAY 按钮与 VOLUME 滑杆接线 */
 document.getElementById('playBtn').addEventListener('click', function(){
   this.blur();   // 点击后归还焦点，避免后续快捷键被按钮拦截
