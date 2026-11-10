@@ -374,17 +374,25 @@ var HANDLES = [
 ];
 
 /* §C MAPPING — 连接判定 / 进行分配（docs/02 §3–§4） */
-var POP_PROGRESSION = ['C','G','Am','F','Em'];   // >4 个矩形时的流行进行（用户指定）
-var CHORD_MIDI = { C:[48,52,55], F:[48,53,57], Dm:[50,53,57], G:[50,55,59], Am:[57,60,64], Em:[52,55,59] };
+/* 和弦进行表：按矩形数量分档（用户 2026-11-10 指定；>8 用卡农循环） */
+var PROGRESSIONS = {
+  1: ['C'],
+  2: ['C','G'],
+  3: ['Dm','G','C'],
+  4: ['Dm','G','C','Am'],
+  5: ['C','G','Am','F','Em'],
+  6: ['Am','C','G','D','F','Em'],
+  7: ['C','G','Am','Em','F','C','Dm'],
+  8: ['C','G','Am','Em','F','C','F','G']     // 卡农进行
+};
+var CHORD_MIDI = { C:[48,52,55], F:[48,53,57], Dm:[50,53,57], G:[50,55,59], Am:[57,60,64], Em:[52,55,59], D:[50,54,57] };
 var TOUCH_EPS = 2;             // 共边判定容差 px（贴边 2px 内算连接）
 
 function buildProgression(n){
-  if (n === 1) return ['C'];
-  if (n === 2) return ['C','F'];
-  if (n === 3) return ['Dm','G','C'];
-  if (n === 4) return ['Dm','G','C','Am'];
+  if (n <= 8) return PROGRESSIONS[n].slice();
+  // >8 个矩形：卡农进行循环，不再新增和弦（用户指定）
   var out = [];
-  for (var i = 0; i < n; i++) out.push(POP_PROGRESSION[i % POP_PROGRESSION.length]);
+  for (var i = 0; i < n; i++) out.push(PROGRESSIONS[8][i % 8]);
   return out;
 }
 function areConnected(a, b){
@@ -514,10 +522,10 @@ function startPlay(){
   loopPlan = [];
   for (var i = 0; i < n; i++){
     var s = doc.spaces[i];
-    // 循环判定：最后一个矩形与第一个矩形也检查连接（首尾相连 = 无缝循环）
-    var next = doc.spaces[(i + 1) % n];
+    // 段内衔接：相邻矩形共边/重叠 = legato（循环处衔接另行处理，永远无缝）
+    var connectedNext = (i < n - 1) && areConnected(s, doc.spaces[i + 1]);
     var wet = 0.15 + 0.65 * clamp(s.w * s.h / (W * H), 0, 1);   // 面积 → 混响强度
-    loopPlan.push({ id: s.id, midi: CHORD_MIDI[prog[i]], wet: wet, legato: areConnected(s, next) });
+    loopPlan.push({ id: s.id, midi: CHORD_MIDI[prog[i]], wet: wet, legato: connectedNext });
   }
   touring = true;
   tourCurrentId = null;
@@ -533,12 +541,20 @@ function startPlay(){
 function schedulePass(t){
   var step = t;
   var D = 3.0;
-  for (var i = 0; i < loopPlan.length; i++){
-    var p = loopPlan[i];
-    var release = p.legato ? 1.6 : 0.9;   // legato 尾音交叠；断开对更快收尾让出停顿
+  var ev = loopPlan.slice();
+  // 奇数个和弦：最后重复一遍末和弦，凑成偶数次再接入下一循环（用户指定）
+  if (ev.length % 2 === 1){
+    var last = ev[ev.length - 1];
+    ev.push({ id: last.id, midi: last.midi, wet: last.wet, legato: true });
+  }
+  for (var i = 0; i < ev.length; i++){
+    var p = ev[i];
+    var isLast = (i === ev.length - 1);
+    var legato = isLast ? true : p.legato;   // 循环衔接：永远无缝（用户指定）
+    var release = legato ? 1.6 : 0.9;        // legato 尾音交叠；断开对更快收尾让出停顿
     playChord(p.midi, step, D, p.wet, release);
     tourTimeline.push({ id: p.id, t: step, dur: D });
-    step += p.legato ? (D - 0.35) : (D + 1.4); // 衔接重叠 0.35s / 断开停顿 0.5s
+    step += legato ? (D - 0.35) : (D + 1.4); // 衔接重叠 0.35s / 断开停顿 0.5s
   }
   return step - t;
 }
@@ -636,12 +652,22 @@ function drawGrid(){
   ctx.stroke();
 }
 
-/* 平面图矩形：地板 → 墙体 → 分界线 → 编号 */
+/* 平面图矩形：地板 → 墙体（重叠处裁剪）→ 分界线 → 编号 */
 function drawSpace(s, idx){
   var x = s.x, y = s.y, w = s.w, h = s.h;
   // 地板
   ctx.fillStyle = COL.FLOOR;
   ctx.fillRect(x, y, w, h);
+  // 墙体：裁剪掉所有其他矩形覆盖区域（重叠处不画墙 = 空间互相打通，用户指定）
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, CW, CH);
+  for (var i = 0; i < doc.spaces.length; i++){
+    var o = doc.spaces[i];
+    if (o === s) continue;
+    ctx.rect(o.x, o.y, o.w, o.h);
+  }
+  ctx.clip('evenodd');
   // 墙体（8px 厚，压在地板外缘 4px）
   ctx.strokeStyle = COL.WALL;
   ctx.lineWidth = WALL;
@@ -650,6 +676,7 @@ function drawSpace(s, idx){
   ctx.strokeStyle = COL.DIVIDER;
   ctx.lineWidth = 1;
   ctx.strokeRect(x + WALL / 2 + 0.5, y + WALL / 2 + 0.5, w - WALL - 1, h - WALL - 1);
+  ctx.restore();
   // 编号（创建顺序 = 播放顺序）
   if (w >= 28 && h >= 18){
     ctx.fillStyle = COL.ACID;
