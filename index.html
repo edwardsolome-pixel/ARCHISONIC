@@ -480,7 +480,7 @@ function areConnected(a, b){
 }
 
 /* §D AUDIO — PAD / 混响 / 播放调度（docs/02 §5–§8） */
-var audioCtx = null, masterGain = null, convolver = null, dryBus = null, delayLine = null, delayFB = null;
+var audioCtx = null, masterGain = null, convolver = null, dryBus = null, delayLine = null, delayFB = null, keysTrackGain = null;
 var activeVoices = [];         // 活跃 voice 集合（上限 64）
 var MAX_VOICES = 64;
 
@@ -491,6 +491,9 @@ function ensureAudio(){
     audioCtx = new AC();
     dryBus = audioCtx.createGain();
     dryBus.gain.value = 0.8;
+    // 键盘轨道音量节点（所有和弦 voice 经此 → 滑块可立即调音量）
+    keysTrackGain = audioCtx.createGain();
+    keysTrackGain.gain.value = doc.keyVol;
     convolver = audioCtx.createConvolver();
     convolver.buffer = makeImpulse(2.5);
     masterGain = audioCtx.createGain();
@@ -549,16 +552,15 @@ function playClick(t, accent){
 function playChord(midiNotes, t0, durSec, wetGain, dlyGain, release){
   var end = t0 + durSec;
   var tm = TIMBRES[doc.timbre] || TIMBRES.classic;
-  var kv = doc.keyVol;         // 键盘轨道音量（0–1）
   var oscs = [];
-  // 公共包络：attack → sustain（可选衰减）→ release（峰值乘键盘轨道音量）
+  // 公共包络：attack → sustain（可选衰减）→ release（音量由 keysTrackGain 统一控制，可立即调节）
   var envGain = audioCtx.createGain();
   envGain.gain.setValueAtTime(0, t0);
-  envGain.gain.linearRampToValueAtTime(kv, t0 + tm.attack);
+  envGain.gain.linearRampToValueAtTime(1, t0 + tm.attack);
   if (tm.decay > 0){
-    envGain.gain.setTargetAtTime(tm.sustain * kv, t0 + tm.attack, tm.decay);
+    envGain.gain.setTargetAtTime(tm.sustain, t0 + tm.attack, tm.decay);
   }
-  envGain.gain.setValueAtTime(tm.sustain * kv, end);
+  envGain.gain.setValueAtTime(tm.sustain, end);
   envGain.gain.linearRampToValueAtTime(0, end + release);
   // lowpass 滤波（按音色）
   var lp = audioCtx.createBiquadFilter();
@@ -593,10 +595,11 @@ function playChord(midiNotes, t0, durSec, wetGain, dlyGain, release){
   wet.gain.value = wetGain;
   var dly = audioCtx.createGain();
   dly.gain.value = dlyGain;
-  lp.connect(dryBus);
-  lp.connect(wet);
+  lp.connect(keysTrackGain);
+  keysTrackGain.connect(dryBus);
+  keysTrackGain.connect(wet);
   wet.connect(convolver);
-  lp.connect(dly);
+  keysTrackGain.connect(dly);
   dly.connect(delayLine);
   // 登记 voice（STOP 时快衰减强停，无爆音）
   activeVoices.push({
@@ -1187,6 +1190,10 @@ document.getElementById('drumMuteBtn').addEventListener('click', function(){
 });
 document.getElementById('keysVol').addEventListener('input', function(){
   doc.keyVol = this.value / 100;
+  // 立即生效（用户要求）：平滑更新轨道增益节点，正在响的和弦立刻变音量
+  if (keysTrackGain && audioCtx){
+    keysTrackGain.gain.setTargetAtTime(doc.keyVol, audioCtx.currentTime, 0.02);
+  }
 });
 document.getElementById('drumVol').addEventListener('input', function(){
   doc.drumVol = this.value / 100;
@@ -1203,7 +1210,10 @@ document.getElementById('playBtn').addEventListener('click', function(){
 document.getElementById('volSlider').addEventListener('input', function(){
   doc.masterVol = this.value / 100;
   document.getElementById('volReadout').textContent = this.value;
-  if (masterGain) masterGain.gain.value = Math.pow(doc.masterVol, 1.5) * 0.7;
+  // 主音量立即生效（平滑过渡防爆音）
+  if (masterGain){
+    masterGain.gain.setTargetAtTime(Math.pow(doc.masterVol, 1.5) * 0.7, audioCtx.currentTime, 0.02);
+  }
 });
 document.getElementById('bpmSlider').addEventListener('input', function(){
   doc.bpm = parseInt(this.value, 10);
