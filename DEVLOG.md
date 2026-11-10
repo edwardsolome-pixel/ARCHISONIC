@@ -82,6 +82,8 @@
 
 - 公告弹窗（用户方案，解决 OST 自动播放被浏览器拦截）：打开先弹「ARCHISONIC: unfinished tour / ALPHA 1」玩法介绍弹窗（暗遮罩+模块窗口），点 OK = 用户手势 → 解锁并开始 OST 播放，随后关闭公告进入主菜单
 
+- 字体随项目分发（用户要求，解决他人电脑无字体问题）：复制 IPix.ttf 到项目根目录，并生成 fonts.css 以 @font-face + base64 data URI 内置字体（file:// 直接引用 .ttf 会被浏览器 CORS 拦截，data URI 无此限制）；index.html 头部引入 fonts.css；任意电脑双击打开即显示像素字体
+
 ### 待办
 
 - [ ] M3 用户验收
