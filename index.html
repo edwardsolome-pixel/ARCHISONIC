@@ -388,6 +388,9 @@ var DOOR_LEN = 40;             // 门开口长度 px
 var WIN_LEN = 26;              // 窗开口长度 px
 var WALL_HIT = 7;              // 墙边命中阈值 px（构件工具用）
 var OPEN_MARGIN = 5;           // 开口距墙角的最小预留 px（用户指定）
+var DRUM_STEPS = 16;           // 鼓机：每小节 16 步（16 分音符）
+var KICK_STEPS = [0, 8, 4, 12];  // 门 → 强拍位（第 1/3/2/4 拍）
+var HAT_STEPS = [2, 6, 10, 14];  // 窗 → 弱拍位（反拍八分）
 
 var COL = {                    // 色板（docs/03）
   CANVAS: '#B5B5B3',           // 画布背景（2026-11-10 修订）
@@ -445,6 +448,10 @@ var tourCurrentId = null;      // 当前发声空间 id（高亮用）
 var metroOn = false;           // 节拍器开关（仅播放时响）
 var metroNext = 0;             // 下一个节拍点的 audio clock 时间
 var metroBeat = 0;             // 节拍计数（每 4 拍一个重音）
+var drumPattern = null;        // 鼓型快照 {kicks:[step...], hats:[{step, vel}...]}
+var drumStepIdx = 0;           // 当前步 0–15
+var drumStepNext = 0;          // 下一步的 audio clock 时间
+var drumVoices = [];           // 鼓 voice 列表（STOP / 静音时 kill）
 var loopPlan = [];             // 循环快照 [{id, midi, wet, legato}]（首尾 legato 循环判定）
 var loopPassStart = 0;         // 最近一遍的起点（audio clock）
 var loopPassDur = 0;           // 一遍总时长
@@ -497,7 +504,7 @@ function areConnected(a, b){
 }
 
 /* §D AUDIO — PAD / 混响 / 播放调度（docs/02 §5–§8） */
-var audioCtx = null, masterGain = null, convolver = null, dryBus = null, delayLine = null, delayFB = null, keysTrackGain = null;
+var audioCtx = null, masterGain = null, convolver = null, dryBus = null, delayLine = null, delayFB = null, keysTrackGain = null, drumTrackGain = null, noiseBuffer = null;
 var activeVoices = [];         // 活跃 voice 集合（上限 64）
 var MAX_VOICES = 64;
 
@@ -511,6 +518,11 @@ function ensureAudio(){
     // 键盘轨道音量节点（所有和弦 voice 经此 → 滑块可立即调音量）
     keysTrackGain = audioCtx.createGain();
     keysTrackGain.gain.value = doc.keyVol;
+    // 鼓轨道音量节点（鼓声音经此 → 鼓滑块即时调音量）
+    drumTrackGain = audioCtx.createGain();
+    drumTrackGain.gain.value = doc.drumVol;
+    // 共享白噪声 buffer（军鼓 / 踩镲用）
+    noiseBuffer = makeNoiseBuffer();
     convolver = audioCtx.createConvolver();
     convolver.buffer = makeImpulse(2.5);
     masterGain = audioCtx.createGain();
@@ -563,6 +575,102 @@ function playClick(t, accent){
   g.connect(masterGain);
   o.start(t);
   o.stop(t + 0.07);
+}
+
+/* ===== 鼓机（16 步音序器，808 风格纯合成） ===== */
+/* 白噪声 buffer（军鼓 / 踩镲共用） */
+function makeNoiseBuffer(){
+  var len = Math.floor(audioCtx.sampleRate * 1);
+  var buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  var d = buf.getChannelData(0);
+  for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  return buf;
+}
+/* 鼓 voice：经 drumTrackGain（受左侧「鼓」轨道音量条控制），独立列表防挤占和弦 */
+function drumVoice(){
+  var g = audioCtx.createGain();
+  g.connect(drumTrackGain);
+  drumVoices.push(g);
+  if (drumVoices.length > 64){ var old = drumVoices.shift(); try { old.disconnect(); } catch (err) {} }
+  return g;
+}
+/* 鼓静音/STOP：快衰减后断开（无爆音） */
+function killDrumVoices(){
+  if (!audioCtx){ drumVoices.length = 0; return; }
+  var now = audioCtx.currentTime;
+  for (var i = 0; i < drumVoices.length; i++){
+    try {
+      drumVoices[i].gain.cancelScheduledValues(now);
+      drumVoices[i].gain.setTargetAtTime(0, now, 0.008);
+    } catch (err) {}
+  }
+  var list = drumVoices;
+  drumVoices = [];
+  setTimeout(function(){
+    for (var j = 0; j < list.length; j++){
+      try { list[j].disconnect(); } catch (err) {}
+    }
+  }, 120);
+}
+/* 底鼓：正弦 160→46Hz 指数扫频 + 快衰减 */
+function playKick(t){
+  var o = audioCtx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(160, t);
+  o.frequency.exponentialRampToValueAtTime(46, t + 0.09);
+  var g = drumVoice();
+  g.gain.setValueAtTime(1.0, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+  o.connect(g);
+  o.start(t); o.stop(t + 0.3);
+}
+/* 军鼓：噪声 bandpass 1800Hz + 三角波低频 */
+function playSnare(t){
+  var src = audioCtx.createBufferSource();
+  src.buffer = noiseBuffer;
+  var bp = audioCtx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.8;
+  var g = drumVoice();
+  g.gain.setValueAtTime(0.7, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  src.connect(bp); bp.connect(g);
+  src.start(t); src.stop(t + 0.15);
+  var o = audioCtx.createOscillator();
+  o.type = 'triangle'; o.frequency.value = 200;
+  var g2 = drumVoice();
+  g2.gain.setValueAtTime(0.4, t);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+  o.connect(g2);
+  o.start(t); o.stop(t + 0.1);
+}
+/* 踩镲：噪声 highpass 7500Hz，短促"擦" */
+function playHat(t, vel){
+  var src = audioCtx.createBufferSource();
+  src.buffer = noiseBuffer;
+  var hp = audioCtx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 7500;
+  var g = drumVoice();
+  g.gain.setValueAtTime(vel, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+  src.connect(hp); hp.connect(g);
+  src.start(t); src.stop(t + 0.06);
+}
+/* 鼓型：全部门窗汇总（按创建顺序）——门 → 强拍（底鼓+军鼓），窗 → 弱拍（踩镲） */
+function buildDrumPattern(){
+  var kicks = [], hats = [];
+  var doors = [], wins = [];
+  for (var i = 0; i < doc.spaces.length; i++){
+    var s = doc.spaces[i];
+    for (var j = 0; j < s.openings.length; j++){
+      var o = s.openings[j];
+      if (o.type === 'door') doors.push(o); else wins.push(o);
+    }
+  }
+  for (var k = 0; k < doors.length && k < 4; k++) kicks.push(KICK_STEPS[k]);
+  for (var m = 0; m < wins.length && m < 4; m++){
+    hats.push({ step: HAT_STEPS[m], vel: (m % 2 === 0) ? 0.65 : 0.5 });   // 轻重交替（disco 律动）
+  }
+  return { kicks: kicks, hats: hats };
 }
 
 /* 和弦 voice：按当前音色配置合成（古典主义 PAD / 现代主义 80s KEY），经混响+延时发送 */
@@ -663,6 +771,9 @@ function startPlay(){
   loopPassDur = schedulePass(loopPassStart);
   metroNext = t0;
   metroBeat = 0;
+  drumPattern = buildDrumPattern();   // 鼓型快照（全部门窗汇总，用户拍板）
+  drumStepIdx = 0;
+  drumStepNext = t0;
   loopTimer = setInterval(loopScheduler, 200);
   setPlayUI(true);
   requestRender();
@@ -712,6 +823,25 @@ function loopScheduler(){
       metroBeat++;
     }
   }
+  // 鼓机（16 步音序器）：门窗汇总节奏每小节循环；鼓静音时网格照常推进
+  {
+    var stepDur = (60 / doc.bpm) / 4;
+    while (drumStepNext < now + 0.3){
+      if (!doc.drumMuted && drumPattern){
+        var s = drumStepIdx;
+        if (drumPattern.kicks.indexOf(s) >= 0){
+          playKick(drumStepNext);   // 门 = 底鼓 + 军鼓叠奏
+          playSnare(drumStepNext);
+        }
+        for (var di = 0; di < drumPattern.hats.length; di++){
+          var h = drumPattern.hats[di];
+          if (h.step === s) playHat(drumStepNext, h.vel);   // 窗 = 擦片
+        }
+      }
+      drumStepNext += stepDur;
+      drumStepIdx = (drumStepIdx + 1) % DRUM_STEPS;
+    }
+  }
   while (tourTimeline.length && tourTimeline[0].t + tourTimeline[0].dur < now - 4){
     tourTimeline.shift();
   }
@@ -732,6 +862,7 @@ function stopPlay(){
   dampDelay();   // 掐掉延时回声尾
   for (var i = 0; i < activeVoices.length; i++) activeVoices[i].kill();
   activeVoices.length = 0;
+  killDrumVoices();   // 鼓即停
   tourTimeline = [];
   loopPlan = [];
   tourCurrentId = null;
@@ -1307,6 +1438,7 @@ document.getElementById('keysMuteBtn').addEventListener('click', function(){
 document.getElementById('drumMuteBtn').addEventListener('click', function(){
   this.blur();
   doc.drumMuted = !doc.drumMuted;
+  if (doc.drumMuted) killDrumVoices();   // 鼓 M 键：立即静音（用户要求，网格照常推进）
   setTrackUI();
 });
 document.getElementById('keysVol').addEventListener('input', function(){
@@ -1318,6 +1450,10 @@ document.getElementById('keysVol').addEventListener('input', function(){
 });
 document.getElementById('drumVol').addEventListener('input', function(){
   doc.drumVol = this.value / 100;
+  // 立即生效：平滑更新鼓轨道增益（用户要求：鼓受「鼓」轨道音量条控制）
+  if (drumTrackGain && audioCtx){
+    drumTrackGain.gain.setTargetAtTime(doc.drumVol, audioCtx.currentTime, 0.02);
+  }
 });
 document.getElementById('keysVol').addEventListener('change', function(){ this.blur(); });
 document.getElementById('drumVol').addEventListener('change', function(){ this.blur(); });
