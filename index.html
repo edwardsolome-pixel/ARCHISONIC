@@ -79,7 +79,7 @@ body::after{
 .tracks-body{display:flex; flex-direction:column; gap:8px; padding:8px}
 .track-row{display:flex; align-items:center; gap:6px}
 .track-name{flex:0 0 32px; font-size:12px; letter-spacing:0.05em; color:var(--ink)}   /* 固定宽度：两行滑块与 M 键对齐 */
-.track-row input[type=range]{width:70px}
+.track-row input[type=range]{width:110px}
 .track-mute{width:24px; height:24px; padding:0; flex:0 0 24px; text-align:center}
 
 /* ---------- 三角形 PLAY 按钮（播放中变方块 STOP） ---------- */
@@ -433,6 +433,7 @@ var loopPassStart = 0;         // 最近一遍的起点（audio clock）
 var loopPassDur = 0;           // 一遍总时长
 var loopTimer = null;          // 循环调度 interval id
 var loopPassSpb = 0;           // 最近一遍的秒/拍（节拍器中途启动时对齐用）
+var loopPassEvCount = 0;       // 一遍的事件数（奇数重复后；静音恢复用）
 
 /* 8 个缩放手柄（dx/dy = 缩放方向） */
 var HANDLES = [
@@ -648,11 +649,10 @@ function startPlay(){
   tourFrame();
 }
 /* 排一遍全部和弦（绝对时间，时值按拍计算），返回该遍总时长 */
-function schedulePass(t){
+function schedulePass(t, from){
   var spb = 60 / doc.bpm;      // 本遍使用当前 BPM（下一遍用新值）
   loopPassSpb = spb;
-  var step = t;
-  var slot = SLOT_BEATS * spb; // 每和弦占 2 小节（8 拍）槽位
+  var slot = SLOT_BEATS * spb; // 每和弦占 1 小节（4 拍）槽位
   var ev = loopPlan.slice();
   // 奇数个和弦：最后重复一遍末和弦，凑成偶数次再接入下一循环（用户指定）
   if (ev.length % 2 === 1){
@@ -660,18 +660,20 @@ function schedulePass(t){
     last.legato = true;        // 原末和弦 → 重复和弦：无缝衔接（修复"空一下"，用户反馈）
     ev.push({ id: last.id, midi: last.midi, wet: last.wet, dly: last.dly, legato: true });
   }
-  for (var i = 0; i < ev.length; i++){
+  loopPassEvCount = ev.length;
+  var step = t;
+  for (var i = from || 0; i < ev.length; i++){
     var p = ev[i];
     var isLast = (i === ev.length - 1);
     var legato = isLast ? true : p.legato;   // 循环衔接：永远无缝（用户指定）
     // 和弦起点严格落在槽位（= 节拍器重音）；legato 靠长尾音交叠，断开靠提前收尾
     var gate = legato ? slot : (slot - 1 * spb);   // 断开：提前 1 拍收尾
-    var release = legato ? 1.5 * spb : 0.5 * spb;  // legato 尾音叠进下一和弦（1.5拍，与 1 小节槽位成比例）；断开留 0.5 拍停顿
+    var release = legato ? 1.5 * spb : 0.5 * spb;  // legato 尾音叠进下一和弦；断开留 0.5 拍停顿
     if (!doc.keyMuted) playChord(p.midi, step, gate, p.wet, p.dly, release);   // 键盘静音：不发声但网格照常推进
     tourTimeline.push({ id: p.id, t: step, dur: slot });
     step += slot;                // 永远整槽位推进 → 与节拍器重音严格对齐
   }
-  return step - t;
+  return ev.length * slot;       // 返回完整一遍时长（局部恢复排程时仍按全遍计）
 }
 /* 循环调度：每遍快结束（提前 2s）时预排下一遍 + 修剪过期时间线 */
 function loopScheduler(){
@@ -694,17 +696,20 @@ function loopScheduler(){
     tourTimeline.shift();
   }
 }
-function stopPlay(){
-  if (!touring) return;
-  touring = false;
-  if (loopTimer){ clearInterval(loopTimer); loopTimer = null; }
-  // 掐掉延时回声尾（0.5s 后恢复默认反馈，此时已静音无爆音）
+/* 掐掉延时回声尾（0.5s 后恢复默认反馈，此时已静音无爆音） */
+function dampDelay(){
   if (delayFB && audioCtx){
     var dt = audioCtx.currentTime;
     delayFB.gain.cancelScheduledValues(dt);
     delayFB.gain.setTargetAtTime(0, dt, 0.02);
     delayFB.gain.setValueAtTime(0.3, dt + 0.5);
   }
+}
+function stopPlay(){
+  if (!touring) return;
+  touring = false;
+  if (loopTimer){ clearInterval(loopTimer); loopTimer = null; }
+  dampDelay();   // 掐掉延时回声尾
   for (var i = 0; i < activeVoices.length; i++) activeVoices[i].kill();
   activeVoices.length = 0;
   tourTimeline = [];
@@ -1159,6 +1164,20 @@ function setTrackUI(){
 document.getElementById('keysMuteBtn').addEventListener('click', function(){
   this.blur();
   doc.keyMuted = !doc.keyMuted;
+  if (doc.keyMuted){
+    // 立即静音（用户要求）：杀掉已排程的全部和弦（含未来音符）并掐掉回声尾
+    for (var i = 0; i < activeVoices.length; i++) activeVoices[i].kill();
+    activeVoices.length = 0;
+    dampDelay();
+  } else if (touring){
+    // 取消静音：从下一个和弦槽位恢复当前遍剩余排程
+    var slot = SLOT_BEATS * loopPassSpb;
+    var now = audioCtx.currentTime;
+    var k = Math.floor((now - loopPassStart) / slot) + 1;
+    if (k >= 0 && k < loopPassEvCount){
+      schedulePass(loopPassStart + k * slot, k);
+    }
+  }
   setTrackUI();
 });
 document.getElementById('drumMuteBtn').addEventListener('click', function(){
