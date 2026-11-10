@@ -354,6 +354,7 @@ var HANDLE_HIT = 8;            // 手柄命中阈值 px
 var DRAG_THRESHOLD = 3;        // 拖拽成立阈值 px
 var WALL = 8;                  // 墙体厚度 px
 var MAX_UNDO = 100;            // 撤销栈上限
+var SLOT_BEATS = 8;            // 每和弦占 2 小节（8 拍），起点与节拍器重音对齐
 
 var COL = {                    // 色板（docs/03）
   CANVAS: '#B5B5B3',           // 画布背景（2026-11-10 修订）
@@ -384,7 +385,7 @@ var TIMBRES = {
       {type:'square',   mult:1,   detune:0,   gain:0.06},
       {type:'triangle', mult:2,   detune:5,   gain:0.035}
     ],
-    attack: 0.02, sustain: 0.1, decay: 0.1, cutoff: 3300, q: 0.7, lfoRate: 5, lfoAmount: 3, reverbScale: 0.7
+    attack: 0.02, sustain: 0.1, decay: 0.1, cutoff: 3300, q: 0.7, lfoRate: 5, lfoAmount: 3, reverbScale: 0.9
   }
 };
 
@@ -612,9 +613,11 @@ function startPlay(){
   touring = true;
   tourCurrentId = null;
   tourTimeline = [];
-  loopPassStart = audioCtx.currentTime + 0.2;
+  // 和弦与节拍器共用同一时间网格：第一个和弦落在第一个重音上（用户要求对齐）
+  var t0 = audioCtx.currentTime + 0.05;
+  loopPassStart = t0;
   loopPassDur = schedulePass(loopPassStart);
-  metroNext = audioCtx.currentTime + 0.05;
+  metroNext = t0;
   metroBeat = 0;
   loopTimer = setInterval(loopScheduler, 200);
   setPlayUI(true);
@@ -625,7 +628,7 @@ function startPlay(){
 function schedulePass(t){
   var spb = 60 / doc.bpm;      // 本遍使用当前 BPM（下一遍用新值）
   var step = t;
-  var D = 6 * spb;             // 每和弦 6 拍（120BPM 时 = 3.0s）
+  var slot = SLOT_BEATS * spb; // 每和弦占 2 小节（8 拍）槽位
   var ev = loopPlan.slice();
   // 奇数个和弦：最后重复一遍末和弦，凑成偶数次再接入下一循环（用户指定）
   if (ev.length % 2 === 1){
@@ -637,10 +640,12 @@ function schedulePass(t){
     var p = ev[i];
     var isLast = (i === ev.length - 1);
     var legato = isLast ? true : p.legato;   // 循环衔接：永远无缝（用户指定）
-    var release = legato ? 3.2 * spb : 1.8 * spb;
-    playChord(p.midi, step, D, p.wet, p.dly, release);
-    tourTimeline.push({ id: p.id, t: step, dur: D });
-    step += legato ? (D - 0.7 * spb) : (D + 2.8 * spb);  // 重叠 0.7拍 / 停顿 1拍
+    // 和弦起点严格落在槽位（= 节拍器重音）；legato 靠长尾音交叠，断开靠提前收尾
+    var gate = legato ? slot : (slot - 1 * spb);   // 断开：提前 1 拍收尾
+    var release = legato ? 3 * spb : 0.5 * spb;    // legato 尾音叠进下一和弦；断开留 0.5 拍停顿
+    playChord(p.midi, step, gate, p.wet, p.dly, release);
+    tourTimeline.push({ id: p.id, t: step, dur: slot });
+    step += slot;                // 永远整槽位推进 → 与节拍器重音严格对齐
   }
   return step - t;
 }
