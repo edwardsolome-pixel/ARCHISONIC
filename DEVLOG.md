@@ -26,6 +26,8 @@
 - 进行替换（用户指定）：>4 个矩形换流行进行 C-G-Am-F-Em 循环（≤4 保持 1=C / 2=C,F / 3=Dm,G,C / 4=Dm,G,C,Am）
 - 用户 CSS 微调修正：brand-body 的 padding 值在编辑中丢失已恢复 12px；font-family 中误写的 bold 移正为 font-weight:bold；播放键下沉量保留用户调整的 20px
 
+- 全站字体替换为 IPix（用户本机安装的中文像素字体，注册表确认用户级安装；CSS 与 Canvas 全部替换，缺字体环境回退 monospace）
+
 ### 待办
 
 - [ ] M3 用户验收

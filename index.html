@@ -25,7 +25,7 @@ body{
   min-width:720px;
   background:var(--ink);
   color:var(--paper);
-  font-family:'Courier New',monospace;
+  font-family:'IPix',monospace;   /* 全站字体：IPix 像素字体（用户本机安装） */
   font-size:12px;
   display:flex;
   flex-direction:column;
@@ -145,8 +145,8 @@ body::after{
   display:flex; align-items:center; justify-content:center;
 }
 .brand-text{
-  font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;   /* 非衬线（用户指定） */
-  font-weight:bold;                                          /* 加粗（原写在 font-family 里无效，已修正） */
+  font-family:'IPix',monospace;   /* 全站字体替换为 IPix（用户指定） */
+  font-weight:bold;
   font-size:20px; letter-spacing:2px;
   color:var(--ink);
 }
@@ -653,7 +653,7 @@ function drawSpace(s, idx){
   // 编号（创建顺序 = 播放顺序）
   if (w >= 28 && h >= 18){
     ctx.fillStyle = COL.ACID;
-    ctx.font = '11px "Courier New", monospace';
+    ctx.font = '11px "IPix", monospace';
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillText(pad2(idx + 1), x + WALL + 2, y + WALL + 2);
   }
