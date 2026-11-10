@@ -141,11 +141,12 @@ body::after{
 #aside .window{flex:1; min-height:0}
 #aside .win-brand{flex:0 0 64px}
 .brand-body{
-  padding:12px 0 0;   /* 标题略下沉，水平居中于 paper 方框（用户指定） */
+  padding:12px 0 0;  /* 标题略下沉，水平居中于 paper 方框（用户指定；原值编辑中丢失已恢复） */
   display:flex; align-items:center; justify-content:center;
 }
 .brand-text{
   font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;   /* 非衬线（用户指定） */
+  font-weight:bold;                                          /* 加粗（原写在 font-family 里无效，已修正） */
   font-size:20px; letter-spacing:2px;
   color:var(--ink);
 }
@@ -186,7 +187,7 @@ body::after{
 .vol-row label{letter-spacing:0.08em}
 #volReadout{min-width:24px; text-align:right}
 .player-body{
-  padding-top:12px;   /* 播放键同理略下沉，居中于 paper 方框 */
+  padding-top:20px;   /* 播放键同理略下沉，居中于 paper 方框 */
   display:flex; align-items:center; justify-content:center;
   overflow:hidden;
 }
@@ -357,9 +358,13 @@ var selection = null;          // 选中空间 id
 var drag = null;               // 拖拽上下文 {mode, startX, startY, moved, ...}
 var undoStack = [], redoStack = [];
 var CW = 0, CH = 0;            // 画布 CSS 尺寸（fitCanvas 刷新）
-var touring = false;           // 播放中
+var touring = false;           // 播放中（循环模式：直到 STOP 才停）
 var tourTimeline = [];         // 播放头时间线 [{id, t, dur}]（audio clock 绝对时间）
 var tourCurrentId = null;      // 当前发声空间 id（高亮用）
+var loopPlan = [];             // 循环快照 [{id, midi, wet, legato}]（首尾 legato 循环判定）
+var loopPassStart = 0;         // 最近一遍的起点（audio clock）
+var loopPassDur = 0;           // 一遍总时长
+var loopTimer = null;          // 循环调度 interval id
 
 /* 8 个缩放手柄（dx/dy = 缩放方向） */
 var HANDLES = [
@@ -369,15 +374,17 @@ var HANDLES = [
 ];
 
 /* §C MAPPING — 连接判定 / 进行分配（docs/02 §3–§4） */
-var LOOP_PROGRESSION = ['Dm','G','C','Am'];
-var CHORD_MIDI = { C:[48,52,55], F:[48,53,57], Dm:[50,53,57], G:[50,55,59], Am:[57,60,64] };
+var POP_PROGRESSION = ['C','G','Am','F','Em'];   // >4 个矩形时的流行进行（用户指定）
+var CHORD_MIDI = { C:[48,52,55], F:[48,53,57], Dm:[50,53,57], G:[50,55,59], Am:[57,60,64], Em:[52,55,59] };
 var TOUCH_EPS = 2;             // 共边判定容差 px（贴边 2px 内算连接）
 
 function buildProgression(n){
   if (n === 1) return ['C'];
   if (n === 2) return ['C','F'];
+  if (n === 3) return ['Dm','G','C'];
+  if (n === 4) return ['Dm','G','C','Am'];
   var out = [];
-  for (var i = 0; i < n; i++) out.push(LOOP_PROGRESSION[i % 4]);
+  for (var i = 0; i < n; i++) out.push(POP_PROGRESSION[i % POP_PROGRESSION.length]);
   return out;
 }
 function areConnected(a, b){
@@ -496,7 +503,7 @@ function playChord(midiNotes, t0, durSec, wetGain, release){
   }
 }
 
-/* PLAY：快照 + 一次性绝对时间排程 */
+/* PLAY：快照 + 循环排程（每遍快结束时预排下一遍，直到 STOP 才停） */
 function startPlay(){
   if (touring) return;
   if (doc.spaces.length === 0) return;
@@ -504,56 +511,69 @@ function startPlay(){
   var n = doc.spaces.length;
   var prog = buildProgression(n);
   var W = CW, H = CH;
-  var plan = [];
+  loopPlan = [];
   for (var i = 0; i < n; i++){
     var s = doc.spaces[i];
-    var connectedNext = (i < n - 1) && areConnected(s, doc.spaces[i + 1]);
+    // 循环判定：最后一个矩形与第一个矩形也检查连接（首尾相连 = 无缝循环）
+    var next = doc.spaces[(i + 1) % n];
     var wet = 0.15 + 0.65 * clamp(s.w * s.h / (W * H), 0, 1);   // 面积 → 混响强度
-    plan.push({ id: s.id, midi: CHORD_MIDI[prog[i]], wet: wet, legato: connectedNext });
-  }
-  var D = 3.0;                       // 每和弦时长
-  var t = audioCtx.currentTime + 0.2;
-  tourTimeline = [];
-  for (var j = 0; j < plan.length; j++){
-    var p = plan[j];
-    var release = p.legato ? 1.6 : 0.9;   // legato 尾音交叠；断开对更快收尾让出停顿
-    playChord(p.midi, t, D, p.wet, release);
-    tourTimeline.push({ id: p.id, t: t, dur: D });
-    t += p.legato ? (D - 0.35) : (D + 1.4); // 衔接重叠 0.35s / 断开停顿 0.5s
+    loopPlan.push({ id: s.id, midi: CHORD_MIDI[prog[i]], wet: wet, legato: areConnected(s, next) });
   }
   touring = true;
   tourCurrentId = null;
+  tourTimeline = [];
+  loopPassStart = audioCtx.currentTime + 0.2;
+  loopPassDur = schedulePass(loopPassStart);
+  loopTimer = setInterval(loopScheduler, 200);
   setPlayUI(true);
   requestRender();
   tourFrame();
 }
+/* 排一遍全部和弦（绝对时间），返回该遍总时长 */
+function schedulePass(t){
+  var step = t;
+  var D = 3.0;
+  for (var i = 0; i < loopPlan.length; i++){
+    var p = loopPlan[i];
+    var release = p.legato ? 1.6 : 0.9;   // legato 尾音交叠；断开对更快收尾让出停顿
+    playChord(p.midi, step, D, p.wet, release);
+    tourTimeline.push({ id: p.id, t: step, dur: D });
+    step += p.legato ? (D - 0.35) : (D + 1.4); // 衔接重叠 0.35s / 断开停顿 0.5s
+  }
+  return step - t;
+}
+/* 循环调度：每遍快结束（提前 2s）时预排下一遍 + 修剪过期时间线 */
+function loopScheduler(){
+  if (!touring) return;
+  var now = audioCtx.currentTime;
+  if (now > loopPassStart + loopPassDur - 2.0){
+    loopPassStart += loopPassDur;
+    loopPassDur = schedulePass(loopPassStart);
+  }
+  while (tourTimeline.length && tourTimeline[0].t + tourTimeline[0].dur < now - 4){
+    tourTimeline.shift();
+  }
+}
 function stopPlay(){
   if (!touring) return;
   touring = false;
+  if (loopTimer){ clearInterval(loopTimer); loopTimer = null; }
   for (var i = 0; i < activeVoices.length; i++) activeVoices[i].kill();
   activeVoices.length = 0;
   tourTimeline = [];
+  loopPlan = [];
   tourCurrentId = null;
   setPlayUI(false);
   requestRender();
 }
-/* 播放高亮帧：线性扫时间线定位当前空间 */
+/* 播放高亮帧：线性扫时间线定位当前空间（循环播放，无自然结束） */
 function tourFrame(){
   if (!touring) return;
   var now = audioCtx.currentTime;
-  var currentId = null, end = 0;
+  var currentId = null;
   for (var i = 0; i < tourTimeline.length; i++){
     var it = tourTimeline[i];
-    end = Math.max(end, it.t + it.dur);
-    if (now >= it.t && now < it.t + it.dur) currentId = it.id;
-  }
-  if (now > end + 1.8){     // 自然结束
-    touring = false;
-    tourTimeline = [];
-    tourCurrentId = null;
-    setPlayUI(false);
-    requestRender();
-    return;
+    if (now >= it.t && now < it.t + it.dur){ currentId = it.id; break; }
   }
   tourCurrentId = currentId;
   requestRender();
@@ -912,6 +932,7 @@ document.addEventListener('keydown', function(e){
     undo();
     updateUI(); requestRender();
   } else if (e.key === 'Escape'){
+    if (touring){ stopPlay(); return; }
     if (drag){
       if (drag.space) setGeom(drag.space, drag.orig);
       drag = null;

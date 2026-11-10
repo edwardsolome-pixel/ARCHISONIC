@@ -22,6 +22,10 @@
 - M3 音频与播放完成：PAD 音色（saw×2 失谐 + triangle 低八度 + lowpass 呼吸 LFO，attack 0.6s）、程序化混响（2.5s 指数衰减脉冲响应，wet = 面积映射 0.15–0.8）、C 大调进行（1=C / 2=C,F / 3=Dm,G,C / 4=Dm,G,C,Am / 5+ 循环）、共边或重叠 = legato（0.35s 交叠）、不相连 = 断开（0.5s 停顿）、PLAY/STOP + Space 切换、播放高亮、VOLUME 滑杆生效
 - 用户视觉微调吸收：--ink 调整为 #525252（墙体随动）；全部窗口外框改酸绿；ARCHISONIC 改 Arial 非衬线并略下沉居中；播放键同理下沉（三角键为 --ink 色 32×30，用户调整）
 
+- 循环播放（用户要求）：不按 STOP 就一直循环；循环衔接按首尾矩形连接判定（首尾相连 = 无缝循环）；Esc 亦可停止
+- 进行替换（用户指定）：>4 个矩形换流行进行 C-G-Am-F-Em 循环（≤4 保持 1=C / 2=C,F / 3=Dm,G,C / 4=Dm,G,C,Am）
+- 用户 CSS 微调修正：brand-body 的 padding 值在编辑中丢失已恢复 12px；font-family 中误写的 bold 移正为 font-weight:bold；播放键下沉量保留用户调整的 20px
+
 ### 待办
 
 - [ ] M3 用户验收
