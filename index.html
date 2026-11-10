@@ -998,8 +998,8 @@ function hitEdge(px, py){
   }
   return null;
 }
-/* 点击处已有开口（同侧重叠）→ 移除；否则新增（均可撤销） */
-function addOrRemoveOpening(open){
+/* 尝试新增开口：与已有门窗重叠则忽略（用户指定：什么都不显示）；否则新增（可撤销） */
+function tryAddOpening(open){
   var s = open.space;
   var edgeLen = (open.side === 'n' || open.side === 's') ? s.w : s.h;
   var len = openingLen(doc.tool);
@@ -1010,13 +1010,8 @@ function addOrRemoveOpening(open){
   for (var i = s.openings.length - 1; i >= 0; i--){
     var o = s.openings[i];
     if (o.side !== open.side) continue;
-    if (Math.abs(o.t - open.t) * edgeLen < openingLen(o.type) / 2 + 4){   // 点击开口本身（±4px）才移除
-      var removed = o, idx = i;
-      s.openings.splice(i, 1);
-      pushUndo({
-        do:  function(){ s.openings.splice(Math.min(idx, s.openings.length), 0, removed); },
-        undo:function(){ var j = s.openings.indexOf(removed); if (j >= 0) s.openings.splice(j, 1); }
-      });
+    // 不允许两个门窗重叠：中心距小于两者半长之和 → 忽略本次点击
+    if (Math.abs(o.t - open.t) * edgeLen < (openingLen(o.type) + len) / 2){
       return;
     }
   }
@@ -1040,7 +1035,7 @@ canvas.addEventListener('pointerdown', function(e){
   if (doc.tool){
     // 构件工具激活：只在墙边点击处打门/窗开口
     var open = hitEdge(e.offsetX, e.offsetY);
-    if (open){ addOrRemoveOpening(open); requestRender(); }
+    if (open){ tryAddOpening(open); requestRender(); }
     return;
   }
   var hit = hitTest(e.offsetX, e.offsetY);
