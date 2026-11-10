@@ -150,7 +150,7 @@ body::after{
 #aside .window{flex:1; min-height:0}
 #aside .win-brand{flex:0 0 64px}
 .brand-body{
-  padding:12px 0 0;  /* 标题略下沉，水平居中于 paper 方框（用户指定；原值编辑中丢失已恢复） */
+  padding:10px 0 0;  /* 标题略下沉，水平居中于 paper 方框（用户指定；原值编辑中丢失已恢复） */
   display:flex; align-items:center; justify-content:center;
 }
 .brand-text{
@@ -387,6 +387,7 @@ var SLOT_BEATS = 4;            // 每和弦占 1 小节（4 拍），起点与�
 var DOOR_LEN = 40;             // 门开口长度 px
 var WIN_LEN = 26;              // 窗开口长度 px
 var WALL_HIT = 7;              // 墙边命中阈值 px（构件工具用）
+var OPEN_MARGIN = 5;           // 开口距墙角的最小预留 px（用户指定）
 
 var COL = {                    // 色板（docs/03）
   CANVAS: '#B5B5B3',           // 画布背景（2026-11-10 修订）
@@ -901,13 +902,18 @@ function drawOpenings(){
         ctx.fillStyle = 'rgba(216,216,214,0.75)';
         if (horiz) ctx.fillRect(cx - len / 2, cy - 7, len, 14);
         else ctx.fillRect(cx - 7, cy - len / 2, 14, len);
+        // 3 条黑色细线：平行于墙壁（垂直于墙壁断面，用户指定）
         ctx.strokeStyle = '#303030';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        for (var k = 1; k <= 3; k++){
-          var p = cx - len / 2 + (len * k / 4);
-          if (horiz){ ctx.moveTo(p + 0.5, cy - 7); ctx.lineTo(p + 0.5, cy + 7); }
-          else { ctx.moveTo(cx - 7, p + 0.5); ctx.lineTo(cx + 7, p + 0.5); }
+        for (var k = -1; k <= 1; k++){
+          if (horiz){
+            var ly = cy + k * 3.5;               // 水平墙：三条水平线（沿墙方向）
+            ctx.moveTo(cx - len / 2, ly + 0.5); ctx.lineTo(cx + len / 2, ly + 0.5);
+          } else {
+            var lx = cx + k * 3.5;               // 竖直墙：三条竖直线（沿墙方向）
+            ctx.moveTo(lx + 0.5, cy - len / 2); ctx.lineTo(lx + 0.5, cy + len / 2);
+          }
         }
         ctx.stroke();
       }
@@ -997,13 +1003,14 @@ function addOrRemoveOpening(open){
   var s = open.space;
   var edgeLen = (open.side === 'n' || open.side === 's') ? s.w : s.h;
   var len = openingLen(doc.tool);
-  if (edgeLen < len) return;                     // 边太短放不下
-  var half = len / 2 / edgeLen;
-  open.t = clamp(open.t, half, 1 - half);        // 开口完整落在边上
+  if (edgeLen < len + 2 * OPEN_MARGIN) return;   // 边太短放不下（含角预留）
+  // 靠墙角点击时：自动放到能容纳开口的位置，距墙角交点预留 5px（用户指定）
+  var half = (len / 2 + OPEN_MARGIN) / edgeLen;
+  open.t = clamp(open.t, half, 1 - half);
   for (var i = s.openings.length - 1; i >= 0; i--){
     var o = s.openings[i];
     if (o.side !== open.side) continue;
-    if (Math.abs(o.t - open.t) * edgeLen < (openingLen(o.type) + len) / 2){
+    if (Math.abs(o.t - open.t) * edgeLen < openingLen(o.type) / 2 + 4){   // 点击开口本身（±4px）才移除
       var removed = o, idx = i;
       s.openings.splice(i, 1);
       pushUndo({
