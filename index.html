@@ -391,6 +391,10 @@ var OPEN_MARGIN = 5;           // 开口距墙角的最小预留 px（用户指�
 var DRUM_STEPS = 16;           // 鼓机：每小节 16 步（16 分音符）
 var KICK_STEPS = [0, 8, 4, 12];  // 门 → 强拍位（第 1/3/2/4 拍）
 var HAT_STEPS = [2, 6, 10, 14];  // 窗 → 弱拍位（反拍八分）
+var AREA_SMALL = 36;           // 短边 ≤ 此值：完全无混响/延时（用户指定）
+var AREA_BIG = 240;            // 短边 ≥ 此值：混响/延时拉满（用户指定）
+var WET_MAX = 1.0;             // 最大混响发送（超级大）
+var DLY_MAX = 0.8;             // 最大延时发送（超级大）
 
 var COL = {                    // 色板（docs/03）
   CANVAS: '#B5B5B3',           // 画布背景（2026-11-10 修订）
@@ -758,9 +762,10 @@ function startPlay(){
     // 段内衔接：相邻矩形共边/重叠 = legato（循环处衔接另行处理，永远无缝）
     var connectedNext = (i < n - 1) && areConnected(s, doc.spaces[i + 1]);
     var tm = TIMBRES[doc.timbre] || TIMBRES.classic;
-    var a = clamp(s.w * s.h / (W * H), 0, 1);
-    var wet = (0.03 + 0.62 * a) * tm.reverbScale;   // 面积 → 混响（用户要求：极小/极大房间差异拉大）
-    var dly = 0.02 + 0.50 * a;                       // 面积 → 延时发送（差异同样拉大）
+    var m = Math.min(s.w, s.h);                      // 以短边衡量房间大小
+    var t = clamp((m - AREA_SMALL) / (AREA_BIG - AREA_SMALL), 0, 1);
+    var wet = t * WET_MAX * tm.reverbScale;   // ≤36px 无混响；≥240px 拉满（用户指定）
+    var dly = t * DLY_MAX;                     // 延时同理
     loopPlan.push({ id: s.id, midi: CHORD_MIDI[prog[i]], wet: wet, dly: dly, legato: connectedNext });
   }
   touring = true;
@@ -1130,7 +1135,7 @@ function hitEdge(px, py){
   }
   return null;
 }
-/* 尝试新增开口：与已有门窗重叠则忽略（用户指定：什么都不显示）；否则新增（可撤销） */
+/* 构件开口：点在已有门窗上 → 删除；新开口与已有重叠 → 忽略；否则新增（均可撤销） */
 function tryAddOpening(open){
   var s = open.space;
   var edgeLen = (open.side === 'n' || open.side === 's') ? s.w : s.h;
@@ -1142,8 +1147,19 @@ function tryAddOpening(open){
   for (var i = s.openings.length - 1; i >= 0; i--){
     var o = s.openings[i];
     if (o.side !== open.side) continue;
-    // 不允许两个门窗重叠：中心距小于两者半长之和 → 忽略本次点击
-    if (Math.abs(o.t - open.t) * edgeLen < (openingLen(o.type) + len) / 2){
+    var dist = Math.abs(o.t - open.t) * edgeLen;
+    if (dist < openingLen(o.type) / 2 + 4){
+      // 点在已有门窗上 → 删除该门窗（用户指定：恢复点击删除功能）
+      var removed = o, idx = i;
+      s.openings.splice(i, 1);
+      pushUndo({
+        do:  function(){ s.openings.splice(Math.min(idx, s.openings.length), 0, removed); },
+        undo:function(){ var j = s.openings.indexOf(removed); if (j >= 0) s.openings.splice(j, 1); }
+      });
+      return;
+    }
+    // 不允许两个门窗重叠：新开口会与已有重叠 → 忽略本次点击
+    if (dist < (openingLen(o.type) + len) / 2){
       return;
     }
   }
