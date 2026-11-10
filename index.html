@@ -374,17 +374,17 @@ var TIMBRES = {
       {type:'sawtooth', mult:1,   detune:-7, gain:0.11},
       {type:'triangle',mult:0.5,  detune:0,  gain:0.055}
     ],
-    attack: 0.6, sustain: 1.0, decay: 0, cutoff: 900, q: 0.5, lfoRate: 0.3, lfoAmount: 120
+    attack: 0.3, sustain: 1.0, decay: 0, cutoff: 900, q: 0.5, lfoRate: 0.3, lfoAmount: 120, reverbScale: 1.0
   },
   modern: {    // 现代主义：80s 合成器 KEY（明亮锯齿 + 快起音，disco/house 色彩）
     name: '现代主义',
     oscs: [
-      {type:'sawtooth', mult:1,   detune:12,  gain:0.13},
-      {type:'sawtooth', mult:1,   detune:-12, gain:0.13},
+      {type:'square', mult:1,   detune:24,  gain:0.13},
+      {type:'triangle', mult:1,   detune:-12, gain:0.23},
       {type:'square',   mult:1,   detune:0,   gain:0.06},
-      {type:'sawtooth', mult:2,   detune:5,   gain:0.035}
+      {type:'triangle', mult:2,   detune:5,   gain:0.035}
     ],
-    attack: 0.02, sustain: 0.8, decay: 0.2, cutoff: 2300, q: 0.7, lfoRate: 0, lfoAmount: 0
+    attack: 0.02, sustain: 0.1, decay: 0.1, cutoff: 3300, q: 0.7, lfoRate: 5, lfoAmount: 3, reverbScale: 0.7
   }
 };
 
@@ -456,7 +456,7 @@ function areConnected(a, b){
 }
 
 /* §D AUDIO — PAD / 混响 / 播放调度（docs/02 §5–§8） */
-var audioCtx = null, masterGain = null, convolver = null, dryBus = null;
+var audioCtx = null, masterGain = null, convolver = null, dryBus = null, delayLine = null, delayFB = null;
 var activeVoices = [];         // 活跃 voice 集合（上限 64）
 var MAX_VOICES = 64;
 
@@ -475,6 +475,14 @@ function ensureAudio(){
     comp.threshold.value = -14; comp.ratio.value = 3; comp.knee.value = 12;
     dryBus.connect(masterGain);
     convolver.connect(masterGain);
+    // 延时（delay）：BPM 同步附点八分，反馈不强（用户指定）
+    delayLine = audioCtx.createDelay(1.0);
+    delayLine.delayTime.value = 0.75 * (60 / doc.bpm);
+    delayFB = audioCtx.createGain();
+    delayFB.gain.value = 0.3;
+    delayLine.connect(delayFB);
+    delayFB.connect(delayLine);
+    delayLine.connect(masterGain);
     masterGain.connect(comp);
     comp.connect(audioCtx.destination);
   }
@@ -513,8 +521,8 @@ function playClick(t, accent){
   o.stop(t + 0.07);
 }
 
-/* 和弦 voice：按当前音色配置合成（古典主义 PAD / 现代主义 80s KEY），经混响发送 */
-function playChord(midiNotes, t0, durSec, wetGain, release){
+/* 和弦 voice：按当前音色配置合成（古典主义 PAD / 现代主义 80s KEY），经混响+延时发送 */
+function playChord(midiNotes, t0, durSec, wetGain, dlyGain, release){
   var end = t0 + durSec;
   var tm = TIMBRES[doc.timbre] || TIMBRES.classic;
   var oscs = [];
@@ -555,12 +563,16 @@ function playChord(midiNotes, t0, durSec, wetGain, release){
     o.start(t0); o.stop(end + release + 0.1);
     oscs.push(o);
   }
-  // 路由：dry 直通 + wet 送混响（面积决定强度）
+  // 路由：dry 直通 + wet 送混响 + dly 送延时（面积决定强度，用户调整）
   var wet = audioCtx.createGain();
   wet.gain.value = wetGain;
+  var dly = audioCtx.createGain();
+  dly.gain.value = dlyGain;
   lp.connect(dryBus);
   lp.connect(wet);
   wet.connect(convolver);
+  lp.connect(dly);
+  dly.connect(delayLine);
   // 登记 voice（STOP 时快衰减强停，无爆音）
   activeVoices.push({
     kill: function(){
@@ -591,8 +603,11 @@ function startPlay(){
     var s = doc.spaces[i];
     // 段内衔接：相邻矩形共边/重叠 = legato（循环处衔接另行处理，永远无缝）
     var connectedNext = (i < n - 1) && areConnected(s, doc.spaces[i + 1]);
-    var wet = 0.15 + 0.65 * clamp(s.w * s.h / (W * H), 0, 1);   // 面积 → 混响强度
-    loopPlan.push({ id: s.id, midi: CHORD_MIDI[prog[i]], wet: wet, legato: connectedNext });
+    var tm = TIMBRES[doc.timbre] || TIMBRES.classic;
+    var a = clamp(s.w * s.h / (W * H), 0, 1);
+    var wet = (0.08 + 0.37 * a) * tm.reverbScale;   // 面积 → 混响（整体降低；现代音色再回调，用户指定）
+    var dly = 0.05 + 0.30 * a;                       // 面积 → 延时发送（用户新增）
+    loopPlan.push({ id: s.id, midi: CHORD_MIDI[prog[i]], wet: wet, dly: dly, legato: connectedNext });
   }
   touring = true;
   tourCurrentId = null;
@@ -616,14 +631,14 @@ function schedulePass(t){
   if (ev.length % 2 === 1){
     var last = ev[ev.length - 1];
     last.legato = true;        // 原末和弦 → 重复和弦：无缝衔接（修复"空一下"，用户反馈）
-    ev.push({ id: last.id, midi: last.midi, wet: last.wet, legato: true });
+    ev.push({ id: last.id, midi: last.midi, wet: last.wet, dly: last.dly, legato: true });
   }
   for (var i = 0; i < ev.length; i++){
     var p = ev[i];
     var isLast = (i === ev.length - 1);
     var legato = isLast ? true : p.legato;   // 循环衔接：永远无缝（用户指定）
     var release = legato ? 3.2 * spb : 1.8 * spb;
-    playChord(p.midi, step, D, p.wet, release);
+    playChord(p.midi, step, D, p.wet, p.dly, release);
     tourTimeline.push({ id: p.id, t: step, dur: D });
     step += legato ? (D - 0.7 * spb) : (D + 2.8 * spb);  // 重叠 0.7拍 / 停顿 1拍
   }
@@ -654,6 +669,13 @@ function stopPlay(){
   if (!touring) return;
   touring = false;
   if (loopTimer){ clearInterval(loopTimer); loopTimer = null; }
+  // 掐掉延时回声尾（0.5s 后恢复默认反馈，此时已静音无爆音）
+  if (delayFB && audioCtx){
+    var dt = audioCtx.currentTime;
+    delayFB.gain.cancelScheduledValues(dt);
+    delayFB.gain.setTargetAtTime(0, dt, 0.02);
+    delayFB.gain.setValueAtTime(0.3, dt + 0.5);
+  }
   for (var i = 0; i < activeVoices.length; i++) activeVoices[i].kill();
   activeVoices.length = 0;
   tourTimeline = [];
@@ -1113,6 +1135,10 @@ document.getElementById('volSlider').addEventListener('input', function(){
 document.getElementById('bpmSlider').addEventListener('input', function(){
   doc.bpm = parseInt(this.value, 10);
   document.getElementById('bpmReadout').textContent = this.value;
+  // 延时时间跟随 BPM（附点八分，平滑过渡）
+  if (delayLine && audioCtx){
+    delayLine.delayTime.setTargetAtTime(0.75 * (60 / doc.bpm), audioCtx.currentTime, 0.1);
+  }
 });
 /* 滑杆调整结束后归还焦点，避免后续快捷键失灵 */
 document.getElementById('bpmSlider').addEventListener('change', function(){ this.blur(); });
