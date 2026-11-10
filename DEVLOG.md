@@ -76,6 +76,8 @@
 
 - 开始菜单（用户要求）：paper 底色启动画面——ARCHISONIC 大字像素字体带硬阴影、UNFINISHED TOUR 小字宽字距、像素风 LETS DESIGN 按钮；首次点击循环播放本地 OST（OST/ARCHISONIC- demo-1.mp3，自动播放策略下手势触发，带提示文字）；进入应用后 OST 淡出停止（用户确认）并顺带解锁应用音频；OST/ 加入 .gitignore（本地素材不进版本库）
 
+- 开始菜单 OST 直接播放（用户指定）：去掉"CLICK ANYWHERE TO PLAY"提示文字，加载即 startOst()；若被浏览器自动播放策略拦截则首次点击静默兜底（无提示）
+
 ### 待办
 
 - [ ] M3 用户验收

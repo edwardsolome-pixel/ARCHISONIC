@@ -76,13 +76,6 @@ body::after{
 }
 .btn-start:hover{background:var(--paper)}
 .btn-start:active{transform:translate(3px,3px); box-shadow:3px 3px 0 var(--gray)}
-.start-hint{
-  margin-top:6px;
-  font-family:'IPix',monospace;
-  font-size:11px; letter-spacing:0.15em;
-  color:var(--gray);
-}
-.start-hint.gone{display:none}
 
 /* ---------- 顶栏（状态区） ---------- */
 #topbar{
@@ -297,7 +290,6 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
     <h1 class="start-title">ARCHISONIC</h1>
     <p class="start-sub">UNFINISHED TOUR</p>
     <button class="btn-start" id="enterBtn" type="button">LETS DESIGN</button>
-    <p class="start-hint" id="startHint">CLICK ANYWHERE TO PLAY OST</p>
   </div>
 </div>
 <audio id="ostAudio" src="OST/ARCHISONIC-%20demo-1.mp3" loop preload="auto"></audio>
@@ -1467,18 +1459,17 @@ window.addEventListener('resize', fitCanvas);
 if (window.ResizeObserver){
   new ResizeObserver(fitCanvas).observe(document.getElementById('canvasBody'));
 }
-/* 开始菜单：OST 背景乐（用户指定：进入应用后淡出停止） */
+/* 开始菜单：OST 背景乐（用户指定：直接播放；进入应用后淡出停止） */
 var ost = document.getElementById('ostAudio');
 var ostStarted = false;
 ost.volume = 0.6;
 function startOst(){
   if (ostStarted) return;
   ostStarted = true;
-  try { ost.play(); } catch (err) {}   // 自动播放策略：首次手势才允许
-  var hint = document.getElementById('startHint');
-  if (hint) hint.classList.add('gone');
+  try { ost.play(); } catch (err) {}
 }
-document.getElementById('startMenu').addEventListener('pointerdown', startOst);
+startOst();   // 打开即直接播放（file:// 下多数浏览器允许）
+document.getElementById('startMenu').addEventListener('pointerdown', startOst);   // 若被浏览器拦截则首次点击静默兜底
 document.getElementById('enterBtn').addEventListener('click', function(){
   this.blur();
   ensureAudio();   // 该点击即手势：顺带解锁应用音频
