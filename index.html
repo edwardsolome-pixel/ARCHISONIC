@@ -343,7 +343,7 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
       DRAG TO DRAW · CLICK TO SELECT<br>
       DRAG HANDLES TO RESIZE · DEL TO DELETE<br>
       CTRL+Z UNDO · ESC CANCEL · PLAY/SPACE TO HEAR<br>
-      PICK 门/窗 TO CUT WALL OPENINGS
+      PICK 门/窗 TO CUT OPENINGS · CLICK EMPTY TO QUIT TOOL
     </div>
   </div>
   <div class="window win-components">
@@ -895,13 +895,13 @@ function drawOpenings(){
         if (horiz) ctx.fillRect(cx - len / 2, cy - 5, len, 10);
         else ctx.fillRect(cx - 5, cy - len / 2, 10, len);
       } else {
-        // 窗：先打掉墙（背景色），再画半透明白块 + 3 条黑色细线（四格窗扇）
+        // 窗：先打掉墙（背景色），再画半透明白块 + 3 条黑色细线
         ctx.fillStyle = COL.CANVAS;
         if (horiz) ctx.fillRect(cx - len / 2, cy - 4, len, 8);
         else ctx.fillRect(cx - 4, cy - len / 2, 8, len);
-        ctx.fillStyle = 'rgba(216,216,214,0.75)';
-        if (horiz) ctx.fillRect(cx - len / 2, cy - 7, len, 14);
-        else ctx.fillRect(cx - 7, cy - len / 2, 14, len);
+        ctx.fillStyle = 'rgba(216,216,214,0.5)';
+        if (horiz) ctx.fillRect(cx - len / 2, cy - 7, len, 5);
+        else ctx.fillRect(cx - 7, cy - len / 2, 5, len);
         // 3 条黑色细线：平行于墙壁（垂直于墙壁断面，用户指定）
         ctx.strokeStyle = '#303030';
         ctx.lineWidth = 1;
@@ -1035,7 +1035,12 @@ canvas.addEventListener('pointerdown', function(e){
   if (doc.tool){
     // 构件工具激活：只在墙边点击处打门/窗开口
     var open = hitEdge(e.offsetX, e.offsetY);
-    if (open){ tryAddOpening(open); requestRender(); }
+    if (open){ tryAddOpening(open); requestRender(); return; }
+    // 点击画布空白处：取消构件工具（用户指定）
+    if (hitTest(e.offsetX, e.offsetY).type === 'empty'){
+      doc.tool = null;
+      setToolUI();
+    }
     return;
   }
   var hit = hitTest(e.offsetX, e.offsetY);
@@ -1217,6 +1222,7 @@ document.addEventListener('keydown', function(e){
     updateUI(); requestRender();
   } else if (e.key === 'Escape'){
     if (touring){ stopPlay(); return; }
+    if (doc.tool){ doc.tool = null; setToolUI(); requestRender(); return; }
     if (drag){
       if (drag.space) setGeom(drag.space, drag.orig);
       drag = null;
