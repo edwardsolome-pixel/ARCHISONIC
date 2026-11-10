@@ -6,16 +6,18 @@
 <title>ARCHISONIC: UNFINISHED TOUR</title>
 <style>
 /* ============================================================
-   ARCHISONIC: UNFINISHED TOUR — M1 静态 UI 骨架
-   视觉规范：docs/03-设计规范.md（色板/字体/组件/布局）
+   ARCHISONIC: UNFINISHED TOUR
+   视觉规范：docs/03-设计规范.md
+   2026-11-10 修订：画布底色 #B5B5B3；绿色 TRANSPORT/PLAYER 窗口；
+   左侧栏三窗口；PLAY 三角按钮移入 PLAYER 窗口；和弦名称隐藏
    ============================================================ */
 :root{
-  --paper:#D8D8D6;   /* 暖灰：窗口底/地板填充/主文字 */
-  --gray:#B5B5B3;    /* 中灰：次级边框/墙体/次级文字 */
-  --ink:#303030;     /* 深炭灰：页面底/画布底/标题条/描边 */
-  --acid:#B8E83E;    /* 荧光黄绿：选中/播放/主按钮/编号 */
-  --grid-minor:rgba(216,216,214,0.08);
-  --grid-major:rgba(216,216,214,0.18);
+  --paper:#D8D8D6;   /* 暖灰：窗口底/地板填充 */
+  --gray:#B5B5B3;    /* 中灰：画布底/次级描边 */
+  --ink:#303030;     /* 深炭灰：页面底/标题条/墙体/文字 */
+  --acid:#B8E83E;    /* 荧光黄绿：选中/播放/绿色窗口/编号 */
+  --grid-minor:rgba(48,48,48,0.10);
+  --grid-major:rgba(48,48,48,0.22);
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
@@ -38,26 +40,18 @@ body::after{
   pointer-events:none;
   background:repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0 1px, transparent 1px 3px);
 }
-/* ---------- 通用文字 ---------- */
 .mono{font-family:inherit}
 .dim{color:var(--gray)}
 
-/* ---------- 顶栏 ---------- */
+/* ---------- 顶栏（状态区） ---------- */
 #topbar{
   height:44px; flex:0 0 44px;
-  display:flex; align-items:center; gap:16px;
+  display:flex; align-items:center; justify-content:center; gap:8px;
   padding:0 12px;
   background:var(--ink);
   border-bottom:1px solid var(--gray);
 }
-.brand{display:flex; align-items:baseline; gap:10px; flex:0 0 auto}
-.brand-main{
-  font-family:Georgia,'Times New Roman',serif;
-  font-style:italic; font-size:22px;
-  color:var(--paper); letter-spacing:1px;
-}
-.brand-sub{font-size:10px; letter-spacing:0.2em; color:var(--gray)}
-.status{flex:1; display:flex; align-items:center; justify-content:center; gap:8px}
+.status{display:flex; align-items:center; gap:8px}
 .status-text{letter-spacing:0.08em; color:var(--paper)}
 /* 闪烁块 █ */
 .blink-block{
@@ -66,7 +60,6 @@ body::after{
   animation:blink 1s steps(2,start) infinite;
 }
 @keyframes blink{to{visibility:hidden}}
-.top-actions{flex:0 0 auto}
 
 /* ---------- 按钮 ---------- */
 .btn{
@@ -79,15 +72,25 @@ body::after{
 }
 .btn:hover{background:var(--gray)}
 .btn:active{transform:translateY(1px)}
-/* 主按钮 PLAY（播放中变 STOP，M3 接线） */
-.btn-acid{
-  height:28px; padding:0 16px;
-  background:var(--acid); color:var(--ink);
-  border:2px solid var(--ink);
-  font-weight:bold;
+
+/* ---------- 三角形 PLAY 按钮（播放中变方块 STOP） ---------- */
+.play-tri{
+  width:64px; height:60px;
+  border:none; padding:0;
+  background:var(--acid);
+  clip-path:polygon(18% 5%, 18% 95%, 88% 50%);
+  cursor:pointer;
 }
-.btn-acid:hover{background:var(--paper)}
-.btn-acid:active{transform:translateY(1px)}
+.play-tri:hover{background:var(--paper)}
+.play-tri:active{background:var(--ink)}
+.play-tri.playing{
+  clip-path:none;
+  width:56px; height:56px;
+  background:var(--acid);
+  color:var(--ink);
+  font-family:inherit; font-size:11px; letter-spacing:0.08em;
+  display:flex; align-items:center; justify-content:center;
+}
 
 /* ---------- 模块化窗口 ---------- */
 .window{
@@ -105,6 +108,9 @@ body::after{
   font-size:12px; letter-spacing:0.08em; text-transform:uppercase;
 }
 .titlebar .title-text{flex:1; white-space:nowrap; overflow:hidden}
+/* 绿色窗口（TRANSPORT / PLAYER）：标题条与边框用酸绿 */
+.win-acid .titlebar{background:var(--acid); color:var(--ink)}
+.win-acid{box-shadow:0 0 0 1px var(--acid)}
 /* 标题条假按钮 [–][□][×] */
 .fake-btns{display:flex; gap:6px; flex:0 0 auto}
 .fake-btns span{color:var(--gray); cursor:default; line-height:1}
@@ -126,8 +132,25 @@ body::after{
 .pxc-tr{top:-1px; right:-1px; border-top:2px solid var(--acid); border-right:2px solid var(--acid)}
 .pxc-bl{bottom:-1px; left:-1px; border-bottom:2px solid var(--acid); border-left:2px solid var(--acid)}
 
-/* ---------- 舞台与画布 ---------- */
-#stage{flex:1; min-height:0; padding:12px; display:flex}
+/* ---------- 中部：左侧栏 + 舞台 ---------- */
+#middle{flex:1; min-height:0; display:flex; gap:12px; padding:12px 12px 0}
+#aside{
+  flex:0 0 190px;
+  display:flex; flex-direction:column; gap:8px;
+  min-height:0;
+}
+#aside .window{flex:1; min-height:0}
+#aside .win-brand{flex:0 0 64px}
+.brand-body{
+  padding:0;
+  display:flex; align-items:center; justify-content:center;
+}
+.brand-text{
+  font-family:Georgia,'Times New Roman',serif;   /* 非斜体 */
+  font-size:20px; letter-spacing:1px;
+  color:var(--ink);
+}
+#stage{flex:1; min-height:0; display:flex}
 .floor-window{flex:1; min-height:420px}
 #canvasBody{flex:1; position:relative; padding:0; display:flex; min-height:0}
 #floorCanvas{
@@ -135,31 +158,38 @@ body::after{
   cursor:crosshair;
   touch-action:none;
 }
-/* 空状态浮层 */
+/* 空状态浮层（画布为浅底，文字用深色） */
 .empty-overlay{
   position:absolute; inset:0;
   display:flex; flex-direction:column;
   align-items:center; justify-content:center; gap:8px;
   pointer-events:none;
 }
-.eo-main{font-size:14px; letter-spacing:0.12em; color:var(--gray); animation:blink 2s steps(2,start) infinite}
-.eo-sub{font-size:11px; letter-spacing:0.08em; color:var(--gray)}
+.eo-main{
+  font-size:14px; letter-spacing:0.12em;
+  color:rgba(48,48,48,0.75);
+  animation:blink 2s steps(2,start) infinite;
+}
+.eo-sub{font-size:11px; letter-spacing:0.08em; color:rgba(48,48,48,0.55)}
 
 /* ---------- 底部面板 ---------- */
 #bottom{
   flex:0 0 auto;
   display:flex; gap:8px;
-  padding:0 12px 8px;
+  padding:8px 12px;
 }
 #bottom .window{min-height:96px}
 #bottom .win-transport{flex:0 0 240px}
-#bottom .win-chords{flex:0 0 220px}
+#bottom .win-player{flex:0 0 220px}
 #bottom .win-manual{flex:1}
 .transport-body{display:flex; flex-direction:column; gap:8px; justify-content:center}
 .vol-row{display:flex; align-items:center; gap:8px}
 .vol-row label{letter-spacing:0.08em}
 #volReadout{min-width:24px; text-align:right}
-.chords-body{font-size:11px; line-height:1.7}
+.player-body{
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden;
+}
 .manual-body{font-size:11px; line-height:1.7}
 
 /* ---------- 滑杆 ---------- */
@@ -195,6 +225,7 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
 
 /* ---------- 断点 ---------- */
 @media (max-width:1100px){
+  #aside{flex-basis:150px}
   #bottom{flex-wrap:wrap}
   #bottom .window{flex:1 1 45%}
 }
@@ -202,43 +233,54 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
 </head>
 <body>
 
-<!-- 顶栏 -->
+<!-- 顶栏：状态区 -->
 <header id="topbar">
-  <div class="brand">
-    <span class="brand-main">ARCHISONIC</span>
-    <span class="brand-sub">UNFINISHED TOUR</span>
-  </div>
   <div class="status">
     <span class="status-text" id="statusText">READY</span>
     <span class="blink-block"></span>
   </div>
-  <div class="top-actions">
-    <button class="btn btn-acid" id="playBtn" type="button">PLAY</button>
-  </div>
 </header>
 
-<!-- 舞台：FLOOR PLAN 主窗口 -->
-<main id="stage">
-  <div class="window floor-window">
-    <span class="pxc pxc-tr"></span>
-    <span class="pxc pxc-bl"></span>
-    <div class="titlebar">
-      <span class="fake-btns"><span>&#8211;</span><span>&#9633;</span><span>&#215;</span></span>
-      <span class="title-text">FLOOR PLAN — GRID 24PX · DRAG TO DRAW</span>
-    </div>
-    <div class="window-body" id="canvasBody">
-      <canvas id="floorCanvas"></canvas>
-      <div class="empty-overlay" id="emptyOverlay">
-        <p class="eo-main">EMPTY LOT. DRAG TO DRAW A RECTANGLE.</p>
-        <p class="eo-sub">PRESS [PLAY] TO HEAR THE CHORDS.</p>
+<!-- 中部：左侧栏（项目名 + 两个空置窗口）+ FLOOR PLAN -->
+<div id="middle">
+  <aside id="aside">
+    <div class="window win-brand">
+      <div class="titlebar"><span class="title-text"></span></div>
+      <div class="window-body brand-body">
+        <span class="brand-text">ARCHISONIC</span>
       </div>
     </div>
-  </div>
-</main>
+    <div class="window">
+      <div class="titlebar"><span class="title-text"></span></div>
+      <div class="window-body"></div>
+    </div>
+    <div class="window">
+      <div class="titlebar"><span class="title-text"></span></div>
+      <div class="window-body"></div>
+    </div>
+  </aside>
+  <main id="stage">
+    <div class="window floor-window">
+      <span class="pxc pxc-tr"></span>
+      <span class="pxc pxc-bl"></span>
+      <div class="titlebar">
+        <span class="fake-btns"><span>&#8211;</span><span>&#9633;</span><span>&#215;</span></span>
+        <span class="title-text">FLOOR PLAN — GRID 24PX · DRAG TO DRAW</span>
+      </div>
+      <div class="window-body" id="canvasBody">
+        <canvas id="floorCanvas"></canvas>
+        <div class="empty-overlay" id="emptyOverlay">
+          <p class="eo-main">EMPTY LOT. DRAG TO DRAW A RECTANGLE.</p>
+          <p class="eo-sub">PRESS [PLAY] TO HEAR THE CHORDS.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
 
-<!-- 底部面板：三个模块窗口 -->
+<!-- 底部面板：绿色 TRANSPORT / PLAYER + MANUAL -->
 <section id="bottom">
-  <div class="window win-transport">
+  <div class="window win-acid win-transport">
     <div class="titlebar"><span class="title-text">TRANSPORT</span></div>
     <div class="window-body transport-body">
       <div class="vol-row">
@@ -250,11 +292,10 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
       <div class="mono dim" id="audioState">AUDIO: STANDBY</div>
     </div>
   </div>
-  <div class="window win-chords">
-    <div class="titlebar"><span class="title-text">CHORDS</span></div>
-    <div class="window-body mono chords-body" id="chordsBody">
-      1=C · 2=C,F · 3=DM,G,C<br>
-      4=DM,G,C,AM · 5+=LOOP
+  <div class="window win-acid win-player">
+    <div class="titlebar"><span class="title-text">PLAYER</span></div>
+    <div class="window-body player-body">
+      <button class="play-tri" id="playBtn" type="button" aria-label="PLAY"></button>
     </div>
   </div>
   <div class="window win-manual">
@@ -262,7 +303,7 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
     <div class="window-body mono manual-body">
       DRAG TO DRAW · CLICK TO SELECT<br>
       DRAG HANDLES TO RESIZE · DEL TO DELETE<br>
-      CTRL+Z UNDO · ESC CANCEL · PLAY TO HEAR
+      CTRL+Z UNDO · ESC CANCEL · PLAY/SPACE TO HEAR
     </div>
   </div>
 </section>
@@ -281,27 +322,57 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
 /* ============================================================
    ARCHISONIC: UNFINISHED TOUR — 脚本
    架构：docs/02-技术方案.md（§A–§H 分节）
-   M1 范围：§A CONFIG / §B STATE / §E RENDER(网格) / §H INIT
+   已实现：M1 UI + M2 绘制与编辑（智能模式 / 撤销 / 删除 / 边界钳制）
+   待实现：M3 音频与播放（§C MAPPING / §D AUDIO / 播放高亮）
    ============================================================ */
 (function(){
 'use strict';
 
 /* §A CONFIG — 常量 */
-var GRID = 24;            // 小网格间距 px
-var GRID_MAJOR = 4;       // 每 4 格一条强调线
-var DPR_CAP = 2;          // devicePixelRatio 封顶（防 4K 开销）
-var MIN_SIZE = 16;        // 矩形最小尺寸（M2 使用）
+var GRID = 24;                 // 小网格间距 px
+var GRID_MAJOR = 4;            // 每 4 格一条强调线
+var DPR_CAP = 2;               // devicePixelRatio 封顶
+var MIN_SIZE = 16;             // 矩形最小尺寸 px
+var HANDLE_HIT = 8;            // 手柄命中阈值 px
+var DRAG_THRESHOLD = 3;        // 拖拽成立阈值 px
+var WALL = 8;                  // 墙体厚度 px
+var MAX_UNDO = 100;            // 撤销栈上限
 
-/* §B STATE — 文档状态（M2/M3 使用） */
+var COL = {                    // 色板（docs/03）
+  CANVAS: '#B5B5B3',           // 画布背景（2026-11-10 修订）
+  FLOOR:  '#D8D8D6',           // 地板填充
+  WALL:   '#303030',           // 墙体
+  DIVIDER:'#B5B5B3',           // 墙体内侧分界线
+  ACID:   '#B8E83E',           // 强调
+  GRID_MINOR: 'rgba(48,48,48,0.10)',
+  GRID_MAJOR: 'rgba(48,48,48,0.22)'
+};
+
+/* §B STATE — 文档状态 */
 var doc = {
-  spaces: [],             // [{id, x, y, w, h}]，id 自增 = 创建顺序 = 播放顺序
+  spaces: [],                  // [{id, x, y, w, h}]，id 自增 = 创建顺序 = 播放顺序
   nextId: 1,
   masterVol: 0.7
 };
-var selection = null;     // 选中空间 id
+var selection = null;          // 选中空间 id
+var drag = null;               // 拖拽上下文 {mode, startX, startY, moved, ...}
+var undoStack = [], redoStack = [];
+var CW = 0, CH = 0;            // 画布 CSS 尺寸（fitCanvas 刷新）
+
+/* 8 个缩放手柄（dx/dy = 缩放方向） */
+var HANDLES = [
+  {n:'nw',x:0,y:0,dx:-1,dy:-1},{n:'n',x:0.5,y:0,dx:0,dy:-1},{n:'ne',x:1,y:0,dx:1,dy:-1},
+  {n:'e',x:1,y:0.5,dx:1,dy:0},{n:'se',x:1,y:1,dx:1,dy:1},{n:'s',x:0.5,y:1,dx:0,dy:1},
+  {n:'sw',x:0,y:1,dx:-1,dy:1},{n:'w',x:0,y:0.5,dx:-1,dy:0}
+];
+
+/* §C MAPPING — 连接判定 / 进行分配（M3 实现） */
+
+/* §D AUDIO — PAD / 混响 / 播放调度（M3 实现） */
 
 /* §E RENDER — 画布渲染 */
 var canvas = null, ctx = null;
+var renderQueued = false;
 
 function fitCanvas(){
   var body = document.getElementById('canvasBody');
@@ -312,47 +383,365 @@ function fitCanvas(){
   canvas.style.width  = rect.width  + 'px';
   canvas.style.height = rect.height + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // 之后全部按 CSS px 绘制
+  CW = rect.width; CH = rect.height;
   render();
 }
 
+function requestRender(){
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(function(){
+    renderQueued = false;
+    render();
+  });
+}
+
 function drawGrid(){
-  var w = canvas.clientWidth, h = canvas.clientHeight;
-  // 画布背景（深炭灰）
-  ctx.fillStyle = '#303030';
-  ctx.fillRect(0, 0, w, h);
+  // 画布背景（中灰 #B5B5B3，2026-11-10 修订）
+  ctx.fillStyle = COL.CANVAS;
+  ctx.fillRect(0, 0, CW, CH);
   // 24px 小网格
-  ctx.strokeStyle = 'rgba(216,216,214,0.08)';
+  ctx.strokeStyle = COL.GRID_MINOR;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (var x = 0; x <= w; x += GRID){ ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, h); }
-  for (var y = 0; y <= h; y += GRID){ ctx.moveTo(0, y + 0.5); ctx.lineTo(w, y + 0.5); }
+  for (var x = 0; x <= CW; x += GRID){ ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, CH); }
+  for (var y = 0; y <= CH; y += GRID){ ctx.moveTo(0, y + 0.5); ctx.lineTo(CW, y + 0.5); }
   ctx.stroke();
   // 96px 强调线
-  ctx.strokeStyle = 'rgba(216,216,214,0.18)';
+  ctx.strokeStyle = COL.GRID_MAJOR;
   ctx.beginPath();
-  for (var x2 = 0; x2 <= w; x2 += GRID * GRID_MAJOR){ ctx.moveTo(x2 + 0.5, 0); ctx.lineTo(x2 + 0.5, h); }
-  for (var y2 = 0; y2 <= h; y2 += GRID * GRID_MAJOR){ ctx.moveTo(0, y2 + 0.5); ctx.lineTo(w, y2 + 0.5); }
+  for (var x2 = 0; x2 <= CW; x2 += GRID * GRID_MAJOR){ ctx.moveTo(x2 + 0.5, 0); ctx.lineTo(x2 + 0.5, CH); }
+  for (var y2 = 0; y2 <= CH; y2 += GRID * GRID_MAJOR){ ctx.moveTo(0, y2 + 0.5); ctx.lineTo(CW, y2 + 0.5); }
   ctx.stroke();
+}
+
+/* 平面图矩形：地板 → 墙体 → 分界线 → 编号 */
+function drawSpace(s, idx){
+  var x = s.x, y = s.y, w = s.w, h = s.h;
+  // 地板
+  ctx.fillStyle = COL.FLOOR;
+  ctx.fillRect(x, y, w, h);
+  // 墙体（8px 厚，压在地板外缘 4px）
+  ctx.strokeStyle = COL.WALL;
+  ctx.lineWidth = WALL;
+  ctx.strokeRect(x, y, w, h);
+  // 墙体内侧分界线
+  ctx.strokeStyle = COL.DIVIDER;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + WALL / 2 + 0.5, y + WALL / 2 + 0.5, w - WALL - 1, h - WALL - 1);
+  // 编号（创建顺序 = 播放顺序）
+  if (w >= 28 && h >= 18){
+    ctx.fillStyle = COL.ACID;
+    ctx.font = '11px "Courier New", monospace';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(pad2(idx + 1), x + WALL + 2, y + WALL + 2);
+  }
+}
+
+/* 选中态：酸绿描边 + 8 手柄 */
+function drawSelection(s){
+  ctx.strokeStyle = COL.ACID;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(s.x - 1, s.y - 1, s.w + 2, s.h + 2);
+  for (var i = 0; i < HANDLES.length; i++){
+    var hd = HANDLES[i];
+    var hx = s.x + s.w * hd.x - 3.5, hy = s.y + s.h * hd.y - 3.5;
+    ctx.fillStyle = COL.ACID;
+    ctx.fillRect(hx, hy, 7, 7);
+    ctx.strokeStyle = '#303030';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(hx + 0.5, hy + 0.5, 6, 6);
+  }
+}
+
+/* 橡皮筋（创建中）：虚线框 + W/H 标注 */
+function drawRubber(d){
+  var x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = COL.ACID;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  ctx.setLineDash([]);
+  ctx.fillStyle = COL.ACID;
+  ctx.font = '11px "Courier New", monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+  var tx = Math.min(d.x1 + 12, CW - 76), ty = Math.max(d.y1 - 8, 20);
+  ctx.fillText('W:' + Math.round(w) + ' H:' + Math.round(h), tx, ty);
 }
 
 function render(){
   drawGrid();
-  /* M2：矩形（墙体/地板/分界线/编号）、选中态、橡皮筋 在此绘制 */
+  for (var i = 0; i < doc.spaces.length; i++) drawSpace(doc.spaces[i], i);
+  if (drag && drag.mode === 'creating' && drag.moved) drawRubber(drag);
+  if (selection !== null){
+    var s = findSpace(selection);
+    if (s) drawSelection(s);
+  }
   /* M3：播放高亮 在此绘制 */
 }
 
-/* §H INIT — 启动序列 */
+/* §F INPUT — 指针状态机（智能模式） */
+function hitHandle(s, px, py){
+  for (var i = 0; i < HANDLES.length; i++){
+    var hd = HANDLES[i];
+    var hx = s.x + s.w * hd.x, hy = s.y + s.h * hd.y;
+    var dx = px - hx, dy = py - hy;
+    if (dx * dx + dy * dy <= HANDLE_HIT * HANDLE_HIT) return hd;
+  }
+  return null;
+}
+function hitTest(px, py){
+  // 1. 选中矩形的手柄
+  if (selection !== null){
+    var sel = findSpace(selection);
+    if (sel){
+      var hd = hitHandle(sel, px, py);
+      if (hd) return { type:'handle', space:sel, handle:hd };
+    }
+  }
+  // 2. 矩形体（倒序 = 最上层优先；外扩 4px 覆盖墙体）
+  for (var i = doc.spaces.length - 1; i >= 0; i--){
+    var r = doc.spaces[i];
+    if (px >= r.x - 4 && px <= r.x + r.w + 4 && py >= r.y - 4 && py <= r.y + r.h + 4){
+      return { type:'body', space:r };
+    }
+  }
+  // 3. 空白
+  return { type:'empty' };
+}
+function cursorFor(hit){
+  if (hit.type === 'handle'){
+    var h = hit.handle;
+    if (h.dx !== 0 && h.dy !== 0) return (h.dx === h.dy) ? 'nwse-resize' : 'nesw-resize';
+    return h.dx !== 0 ? 'ew-resize' : 'ns-resize';
+  }
+  if (hit.type === 'body') return 'move';
+  return 'crosshair';
+}
+function snap(s){ return { x:s.x, y:s.y, w:s.w, h:s.h }; }
+function setGeom(s, g){ s.x = g.x; s.y = g.y; s.w = g.w; s.h = g.h; }
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(v, hi)); }
+
 canvas = document.getElementById('floorCanvas');
 ctx = canvas.getContext('2d');
+
+canvas.addEventListener('pointerdown', function(e){
+  e.preventDefault();
+  var hit = hitTest(e.offsetX, e.offsetY);
+  drag = {
+    mode: hit.type === 'handle' ? 'resizing' : (hit.type === 'body' ? 'moving' : 'creating'),
+    startX: e.offsetX, startY: e.offsetY,
+    moved: false
+  };
+  if (hit.type === 'handle'){
+    drag.space = hit.space; drag.handle = hit.handle; drag.orig = snap(hit.space);
+  } else if (hit.type === 'body'){
+    drag.space = hit.space; drag.orig = snap(hit.space);
+  } else {
+    drag.anchorX = e.offsetX; drag.anchorY = e.offsetY;
+  }
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  requestRender();
+});
+
+canvas.addEventListener('pointermove', function(e){
+  if (!drag){
+    canvas.style.cursor = cursorFor(hitTest(e.offsetX, e.offsetY));
+    return;
+  }
+  var dx = e.offsetX - drag.startX, dy = e.offsetY - drag.startY;
+  if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) drag.moved = true;
+
+  if (drag.mode === 'creating'){
+    // 归一化反向拖拽 + 钳制画布内
+    drag.x0 = clamp(Math.min(drag.anchorX, e.offsetX), 0, CW);
+    drag.y0 = clamp(Math.min(drag.anchorY, e.offsetY), 0, CH);
+    drag.x1 = clamp(Math.max(drag.anchorX, e.offsetX), 0, CW);
+    drag.y1 = clamp(Math.max(drag.anchorY, e.offsetY), 0, CH);
+  } else if (drag.mode === 'moving'){
+    if (drag.moved){
+      drag.space.x = clamp(drag.orig.x + dx, 0, CW - drag.space.w);
+      drag.space.y = clamp(drag.orig.y + dy, 0, CH - drag.space.h);
+    }
+  } else if (drag.mode === 'resizing'){
+    applyResize(dx, dy);
+  }
+  requestRender();
+});
+
+function applyResize(dx, dy){
+  var s = drag.space, o = drag.orig, h = drag.handle;
+  var nx = o.x, ny = o.y, nw = o.w, nh = o.h;
+  if (h.dx === -1){
+    var ex = clamp(o.x + dx, 0, o.x + o.w - MIN_SIZE);
+    nx = ex; nw = o.x + o.w - ex;
+  } else if (h.dx === 1){
+    nw = clamp(o.w + dx, MIN_SIZE, CW - o.x);
+  }
+  if (h.dy === -1){
+    var ey = clamp(o.y + dy, 0, o.y + o.h - MIN_SIZE);
+    ny = ey; nh = o.y + o.h - ey;
+  } else if (h.dy === 1){
+    nh = clamp(o.h + dy, MIN_SIZE, CH - o.y);
+  }
+  s.x = nx; s.y = ny; s.w = nw; s.h = nh;
+}
+
+canvas.addEventListener('pointerup', function(e){
+  if (!drag) return;
+  var d = drag; drag = null;
+
+  if (d.mode === 'creating'){
+    if (d.moved){
+      var w = d.x1 - d.x0, h = d.y1 - d.y0;
+      if (w >= MIN_SIZE && h >= MIN_SIZE){
+        var sp = { id: doc.nextId++, x: d.x0, y: d.y0, w: w, h: h };
+        doc.spaces.push(sp);
+        selection = sp.id;
+        pushUndo(makeCmd('add', sp, doc.spaces.length - 1));
+      }
+    } else {
+      // 空白点击 = 取消选中
+      if (selection !== null) selection = null;
+    }
+    updateUI();
+  } else if (d.mode === 'moving'){
+    if (d.moved){
+      if (d.orig.x !== d.space.x || d.orig.y !== d.space.y){
+        pushUndo(makeCmd('move', d.space, null, d.orig, snap(d.space)));
+      }
+    } else {
+      // 点击矩形 = 选中
+      selection = d.space.id;
+    }
+    updateUI();
+  } else if (d.mode === 'resizing'){
+    if (d.orig.x !== d.space.x || d.orig.y !== d.space.y ||
+        d.orig.w !== d.space.w || d.orig.h !== d.space.h){
+      pushUndo(makeCmd('resize', d.space, null, d.orig, snap(d.space)));
+    }
+    updateUI();
+  }
+  requestRender();
+});
+
+canvas.addEventListener('pointercancel', function(){
+  if (drag){
+    if (drag.space) setGeom(drag.space, drag.orig);
+    drag = null;
+    requestRender();
+  }
+});
+
+/* 撤销栈：命令对象（快照值，无陈旧引用） */
+function makeCmd(t, space, index, before, after){
+  if (t === 'add'){
+    return {
+      do:  function(){ removeSpaceById(space.id); },
+      undo:function(){ doc.spaces.splice(index, 0, space); }
+    };
+  }
+  if (t === 'remove'){
+    return {
+      do:  function(){ removeSpaceById(space.id); },
+      undo:function(){ doc.spaces.splice(index, 0, space); }
+    };
+  }
+  // move / resize
+  return {
+    do:  function(){ setGeom(space, before); },
+    undo:function(){ setGeom(space, after); }
+  };
+}
+function pushUndo(cmd){
+  undoStack.push(cmd);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+}
+function undo(){
+  if (!undoStack.length) return;
+  var c = undoStack.pop();
+  c.do();
+  redoStack.push(c);
+}
+function removeSpaceById(id){
+  for (var i = 0; i < doc.spaces.length; i++){
+    if (doc.spaces[i].id === id){ doc.spaces.splice(i, 1); return i; }
+  }
+  return -1;
+}
+function removeSpaceWithUndo(id){
+  var idx = -1, sp = null;
+  for (var i = 0; i < doc.spaces.length; i++){
+    if (doc.spaces[i].id === id){ idx = i; sp = doc.spaces[i]; break; }
+  }
+  if (idx < 0) return;
+  pushUndo(makeCmd('remove', sp, idx));
+  doc.spaces.splice(idx, 1);
+}
+function findSpace(id){
+  for (var i = 0; i < doc.spaces.length; i++){
+    if (doc.spaces[i].id === id) return doc.spaces[i];
+  }
+  return null;
+}
+
+/* 键盘：Delete / Ctrl+Z / Esc / Space */
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+  if (e.key === 'Delete' || e.key === 'Backspace'){
+    if (selection !== null){
+      e.preventDefault();
+      removeSpaceWithUndo(selection);
+      selection = null;
+      updateUI(); requestRender();
+    }
+  } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')){
+    e.preventDefault();
+    undo();
+    updateUI(); requestRender();
+  } else if (e.key === 'Escape'){
+    if (drag){
+      if (drag.space) setGeom(drag.space, drag.orig);
+      drag = null;
+    } else if (selection !== null){
+      selection = null;
+    }
+    updateUI(); requestRender();
+  } else if (e.key === ' '){
+    e.preventDefault();
+    /* M3：PLAY/STOP 切换 */
+  }
+});
+
+/* §G UI — 面板刷新 */
+function pad2(n){ return n < 10 ? '0' + n : '' + n; }
+function selectionIndex(){
+  if (selection === null) return -1;
+  for (var i = 0; i < doc.spaces.length; i++){
+    if (doc.spaces[i].id === selection) return i;
+  }
+  return -1;
+}
+function updateUI(){
+  if (selection !== null && !findSpace(selection)) selection = null;
+  var n = doc.spaces.length;
+  document.getElementById('spacesCount').textContent = 'SPACES: ' + pad2(n);
+  document.getElementById('emptyOverlay').style.display = (n === 0) ? 'flex' : 'none';
+  var selText = (selection !== null) ? 'SPACE ' + pad2(selectionIndex() + 1) + ' SELECTED' : 'READY';
+  document.getElementById('statusText').textContent = selText;
+  document.getElementById('statusTail').textContent = selText;
+}
+
+/* §H INIT — 启动序列 */
 fitCanvas();
+updateUI();
 window.addEventListener('resize', fitCanvas);
 if (window.ResizeObserver){
   new ResizeObserver(fitCanvas).observe(document.getElementById('canvasBody'));
 }
-
-/* §C MAPPING（连接判定/进行分配）、§D AUDIO（PAD/混响/调度）、
-   §F INPUT（指针状态机）、§G UI（控件绑定） —— M2–M3 实现 */
-
+/* M3：PLAY 按钮 / VOLUME 滑杆接线、音频引擎、播放高亮 */
 })();
 </script>
 </body>
