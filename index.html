@@ -988,7 +988,10 @@ function findSpace(id){
 /* 键盘：Delete / Ctrl+Z / Esc / Space */
 document.addEventListener('keydown', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON')) return;
+  var tag = t ? t.tagName : '';
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;   // 表单控件：放行原生行为
+  if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;    // 按钮：仅放行原生激活键
+  /* 其余按键即使焦点在按钮上也走全局快捷键（修复：点击按钮后 Delete/Ctrl+Z 失灵） */
   if (e.key === 'Delete' || e.key === 'Backspace'){
     if (selection !== null){
       e.preventDefault();
@@ -1048,6 +1051,7 @@ if (window.ResizeObserver){
 }
 /* PLAY 按钮与 VOLUME 滑杆接线 */
 document.getElementById('playBtn').addEventListener('click', function(){
+  this.blur();   // 点击后归还焦点，避免后续快捷键被按钮拦截
   if (touring) stopPlay(); else startPlay();
 });
 document.getElementById('volSlider').addEventListener('input', function(){
@@ -1059,7 +1063,11 @@ document.getElementById('bpmSlider').addEventListener('input', function(){
   doc.bpm = parseInt(this.value, 10);
   document.getElementById('bpmReadout').textContent = this.value;
 });
+/* 滑杆调整结束后归还焦点，避免后续快捷键失灵 */
+document.getElementById('bpmSlider').addEventListener('change', function(){ this.blur(); });
+document.getElementById('volSlider').addEventListener('change', function(){ this.blur(); });
 document.getElementById('metroBtn').addEventListener('click', function(){
+  this.blur();   // 点击后归还焦点，避免后续快捷键被按钮拦截
   metroOn = !metroOn;
   if (metroOn){
     if (!ensureAudio()){ metroOn = false; return; }
