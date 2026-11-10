@@ -411,6 +411,7 @@ var loopPlan = [];             // 循环快照 [{id, midi, wet, legato}]（首�
 var loopPassStart = 0;         // 最近一遍的起点（audio clock）
 var loopPassDur = 0;           // 一遍总时长
 var loopTimer = null;          // 循环调度 interval id
+var loopPassSpb = 0;           // 最近一遍的秒/拍（节拍器中途启动时对齐用）
 
 /* 8 个缩放手柄（dx/dy = 缩放方向） */
 var HANDLES = [
@@ -627,6 +628,7 @@ function startPlay(){
 /* 排一遍全部和弦（绝对时间，时值按拍计算），返回该遍总时长 */
 function schedulePass(t){
   var spb = 60 / doc.bpm;      // 本遍使用当前 BPM（下一遍用新值）
+  loopPassSpb = spb;
   var step = t;
   var slot = SLOT_BEATS * spb; // 每和弦占 2 小节（8 拍）槽位
   var ev = loopPlan.slice();
@@ -1153,8 +1155,18 @@ document.getElementById('metroBtn').addEventListener('click', function(){
   metroOn = !metroOn;
   if (metroOn){
     if (!ensureAudio()){ metroOn = false; return; }
-    metroNext = audioCtx.currentTime + 0.05;
-    metroBeat = 0;
+    if (touring){
+      // 播放中启动：对齐到当前循环网格（槽位起点 = 小节重音），从当前拍子继续（用户要求）
+      var spb2 = loopPassSpb || (60 / doc.bpm);
+      var now = audioCtx.currentTime;
+      var k = Math.max(1, Math.ceil((now - loopPassStart) / spb2));
+      metroNext = loopPassStart + k * spb2;
+      if (metroNext <= now) metroNext += spb2;
+      metroBeat = k % 4;
+    } else {
+      metroNext = audioCtx.currentTime + 0.05;
+      metroBeat = 0;
+    }
   }
   var b = document.getElementById('metroBtn');
   b.textContent = metroOn ? 'METRO: ON' : 'METRO: OFF';
