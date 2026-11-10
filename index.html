@@ -191,6 +191,10 @@ body::after{
 #bottom .win-transport{flex:0 0 240px}
 #bottom .win-player{flex:0 0 220px}
 #bottom .win-manual{flex:1}
+#bottom .win-components{flex:0 0 110px}
+/* 构件按钮（门/窗） */
+.comp-body{display:flex; flex-direction:column; gap:6px; padding:8px}
+.comp-btn{width:100%; height:auto; padding:6px 8px; text-align:left; letter-spacing:0.05em}
 .transport-body{display:flex; flex-direction:column; gap:8px; justify-content:center}
 .vol-row{display:flex; align-items:center; gap:8px}
 .vol-row label{letter-spacing:0.08em}
@@ -338,7 +342,15 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
     <div class="window-body mono manual-body">
       DRAG TO DRAW · CLICK TO SELECT<br>
       DRAG HANDLES TO RESIZE · DEL TO DELETE<br>
-      CTRL+Z UNDO · ESC CANCEL · PLAY/SPACE TO HEAR
+      CTRL+Z UNDO · ESC CANCEL · PLAY/SPACE TO HEAR<br>
+      PICK 门/窗 TO CUT WALL OPENINGS
+    </div>
+  </div>
+  <div class="window win-components">
+    <div class="titlebar"><span class="title-text">构件</span></div>
+    <div class="window-body comp-body">
+      <button class="btn comp-btn" id="compDoor" type="button">门</button>
+      <button class="btn comp-btn" id="compWindow" type="button">窗</button>
     </div>
   </div>
 </section>
@@ -372,6 +384,9 @@ var DRAG_THRESHOLD = 3;        // 拖拽成立阈值 px
 var WALL = 8;                  // 墙体厚度 px
 var MAX_UNDO = 100;            // 撤销栈上限
 var SLOT_BEATS = 4;            // 每和弦占 1 小节（4 拍），起点与节拍器重音对齐（用户指定 1 小节）
+var DOOR_LEN = 40;             // 门开口长度 px
+var WIN_LEN = 26;              // 窗开口长度 px
+var WALL_HIT = 7;              // 墙边命中阈值 px（构件工具用）
 
 var COL = {                    // 色板（docs/03）
   CANVAS: '#B5B5B3',           // 画布背景（2026-11-10 修订）
@@ -416,7 +431,8 @@ var doc = {
   keyVol: 1,                   // 键盘轨道音量 0–1
   keyMuted: false,             // 键盘轨道静音
   drumVol: 1,                  // 鼓轨道音量 0–1（鼓未实现，仅 UI）
-  drumMuted: false             // 鼓轨道静音（鼓未实现，仅 UI）
+  drumMuted: false,            // 鼓轨道静音（鼓未实现，仅 UI）
+  tool: null                   // 构件工具：null | 'door' | 'window'
 };
 var selection = null;          // 选中空间 id
 var drag = null;               // 拖拽上下文 {mode, startX, startY, moved, ...}
@@ -856,6 +872,49 @@ function drawRubber(d){
   ctx.fillText('W:' + Math.round(w) + ' H:' + Math.round(h), tx, ty);
 }
 
+/* 构件开口绘制：门 = 灰色门板条；窗 = 半透明白块 + 3 条黑线（用户指定样式） */
+function drawOpenings(){
+  for (var i = 0; i < doc.spaces.length; i++){
+    var s = doc.spaces[i];
+    for (var j = 0; j < s.openings.length; j++){
+      var o = s.openings[j];
+      var horiz = (o.side === 'n' || o.side === 's');
+      var len = openingLen(o.type);
+      var cx, cy;
+      if (horiz){
+        cx = s.x + o.t * s.w;
+        cy = (o.side === 'n') ? s.y : s.y + s.h;
+      } else {
+        cx = (o.side === 'w') ? s.x : s.x + s.w;
+        cy = s.y + o.t * s.h;
+      }
+      if (o.type === 'door'){
+        // 门：窄长灰色门板条（覆盖墙体 = 墙洞）
+        ctx.fillStyle = '#B5B5B3';
+        if (horiz) ctx.fillRect(cx - len / 2, cy - 5, len, 10);
+        else ctx.fillRect(cx - 5, cy - len / 2, 10, len);
+      } else {
+        // 窗：先打掉墙（背景色），再画半透明白块 + 3 条黑色细线（四格窗扇）
+        ctx.fillStyle = COL.CANVAS;
+        if (horiz) ctx.fillRect(cx - len / 2, cy - 4, len, 8);
+        else ctx.fillRect(cx - 4, cy - len / 2, 8, len);
+        ctx.fillStyle = 'rgba(216,216,214,0.75)';
+        if (horiz) ctx.fillRect(cx - len / 2, cy - 7, len, 14);
+        else ctx.fillRect(cx - 7, cy - len / 2, 14, len);
+        ctx.strokeStyle = '#303030';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (var k = 1; k <= 3; k++){
+          var p = cx - len / 2 + (len * k / 4);
+          if (horiz){ ctx.moveTo(p + 0.5, cy - 7); ctx.lineTo(p + 0.5, cy + 7); }
+          else { ctx.moveTo(cx - 7, p + 0.5); ctx.lineTo(cx + 7, p + 0.5); }
+        }
+        ctx.stroke();
+      }
+    }
+  }
+}
+
 function render(){
   drawGrid();
   for (var i = 0; i < doc.spaces.length; i++) drawSpace(doc.spaces[i], i);
@@ -864,6 +923,7 @@ function render(){
     var s = findSpace(selection);
     if (s) drawSelection(s);
   }
+  drawOpenings();
   /* 播放高亮：当前发声矩形酸绿描边 */
   if (touring && tourCurrentId !== null){
     var hs = findSpace(tourCurrentId);
@@ -913,6 +973,53 @@ function cursorFor(hit){
   if (hit.type === 'body') return 'move';
   return 'crosshair';
 }
+/* 构件开口（门/窗）：墙边命中检测（WALL_HIT 阈值） */
+function openingLen(type){ return type === 'door' ? DOOR_LEN : WIN_LEN; }
+function hitEdge(px, py){
+  for (var i = doc.spaces.length - 1; i >= 0; i--){
+    var s = doc.spaces[i];
+    var cand = null;
+    if (py >= s.y - WALL_HIT && py <= s.y + WALL_HIT && px >= s.x && px <= s.x + s.w){
+      cand = { space:s, side:'n', t:(px - s.x) / s.w };
+    } else if (py >= s.y + s.h - WALL_HIT && py <= s.y + s.h + WALL_HIT && px >= s.x && px <= s.x + s.w){
+      cand = { space:s, side:'s', t:(px - s.x) / s.w };
+    } else if (px >= s.x - WALL_HIT && px <= s.x + WALL_HIT && py >= s.y && py <= s.y + s.h){
+      cand = { space:s, side:'w', t:(py - s.y) / s.h };
+    } else if (px >= s.x + s.w - WALL_HIT && px <= s.x + s.w + WALL_HIT && py >= s.y && py <= s.y + s.h){
+      cand = { space:s, side:'e', t:(py - s.y) / s.h };
+    }
+    if (cand) return cand;
+  }
+  return null;
+}
+/* 点击处已有开口（同侧重叠）→ 移除；否则新增（均可撤销） */
+function addOrRemoveOpening(open){
+  var s = open.space;
+  var edgeLen = (open.side === 'n' || open.side === 's') ? s.w : s.h;
+  var len = openingLen(doc.tool);
+  if (edgeLen < len) return;                     // 边太短放不下
+  var half = len / 2 / edgeLen;
+  open.t = clamp(open.t, half, 1 - half);        // 开口完整落在边上
+  for (var i = s.openings.length - 1; i >= 0; i--){
+    var o = s.openings[i];
+    if (o.side !== open.side) continue;
+    if (Math.abs(o.t - open.t) * edgeLen < (openingLen(o.type) + len) / 2){
+      var removed = o, idx = i;
+      s.openings.splice(i, 1);
+      pushUndo({
+        do:  function(){ s.openings.splice(Math.min(idx, s.openings.length), 0, removed); },
+        undo:function(){ var j = s.openings.indexOf(removed); if (j >= 0) s.openings.splice(j, 1); }
+      });
+      return;
+    }
+  }
+  var o2 = { side: open.side, t: open.t, type: doc.tool };
+  s.openings.push(o2);
+  pushUndo({
+    do:  function(){ var j = s.openings.indexOf(o2); if (j >= 0) s.openings.splice(j, 1); },
+    undo:function(){ s.openings.push(o2); }
+  });
+}
 function snap(s){ return { x:s.x, y:s.y, w:s.w, h:s.h }; }
 function setGeom(s, g){ s.x = g.x; s.y = g.y; s.w = g.w; s.h = g.h; }
 function clamp(v, lo, hi){ return Math.max(lo, Math.min(v, hi)); }
@@ -923,6 +1030,12 @@ ctx = canvas.getContext('2d');
 canvas.addEventListener('pointerdown', function(e){
   e.preventDefault();
   ensureAudio();               // 首次手势解锁音频（浏览器自动播放策略）
+  if (doc.tool){
+    // 构件工具激活：只在墙边点击处打门/窗开口
+    var open = hitEdge(e.offsetX, e.offsetY);
+    if (open){ addOrRemoveOpening(open); requestRender(); }
+    return;
+  }
   var hit = hitTest(e.offsetX, e.offsetY);
   drag = {
     mode: hit.type === 'handle' ? 'resizing' : (hit.type === 'body' ? 'moving' : 'creating'),
@@ -991,7 +1104,7 @@ canvas.addEventListener('pointerup', function(e){
     if (d.moved){
       var w = d.x1 - d.x0, h = d.y1 - d.y0;
       if (w >= MIN_SIZE && h >= MIN_SIZE){
-        var sp = { id: doc.nextId++, x: d.x0, y: d.y0, w: w, h: h };
+        var sp = { id: doc.nextId++, x: d.x0, y: d.y0, w: w, h: h, openings: [] };
         doc.spaces.push(sp);
         selection = sp.id;
         pushUndo(makeCmd('add', sp, doc.spaces.length - 1));
@@ -1201,6 +1314,23 @@ document.getElementById('drumVol').addEventListener('input', function(){
 document.getElementById('keysVol').addEventListener('change', function(){ this.blur(); });
 document.getElementById('drumVol').addEventListener('change', function(){ this.blur(); });
 setTrackUI();
+
+/* 构件工具（门/窗）：选中 / 再点取消 */
+function setToolUI(){
+  document.getElementById('compDoor').classList.toggle('btn-on', doc.tool === 'door');
+  document.getElementById('compWindow').classList.toggle('btn-on', doc.tool === 'window');
+}
+document.getElementById('compDoor').addEventListener('click', function(){
+  this.blur();
+  doc.tool = (doc.tool === 'door') ? null : 'door';
+  setToolUI();
+});
+document.getElementById('compWindow').addEventListener('click', function(){
+  this.blur();
+  doc.tool = (doc.tool === 'window') ? null : 'window';
+  setToolUI();
+});
+setToolUI();
 
 /* PLAY 按钮与 VOLUME 滑杆接线 */
 document.getElementById('playBtn').addEventListener('click', function(){
