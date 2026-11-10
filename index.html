@@ -759,8 +759,8 @@ function startPlay(){
     var connectedNext = (i < n - 1) && areConnected(s, doc.spaces[i + 1]);
     var tm = TIMBRES[doc.timbre] || TIMBRES.classic;
     var a = clamp(s.w * s.h / (W * H), 0, 1);
-    var wet = (0.08 + 0.37 * a) * tm.reverbScale;   // 面积 → 混响（整体降低；现代音色再回调，用户指定）
-    var dly = 0.05 + 0.30 * a;                       // 面积 → 延时发送（用户新增）
+    var wet = (0.03 + 0.62 * a) * tm.reverbScale;   // 面积 → 混响（用户要求：极小/极大房间差异拉大）
+    var dly = 0.02 + 0.50 * a;                       // 面积 → 延时发送（差异同样拉大）
     loopPlan.push({ id: s.id, midi: CHORD_MIDI[prog[i]], wet: wet, dly: dly, legato: connectedNext });
   }
   touring = true;
@@ -1057,7 +1057,7 @@ function render(){
   drawGrid();
   for (var i = 0; i < doc.spaces.length; i++) drawSpace(doc.spaces[i], i);
   if (drag && drag.mode === 'creating' && drag.moved) drawRubber(drag);
-  if (selection !== null){
+  if (selection !== null && !doc.tool){   // 构件工具激活时隐藏缩放框（用户指定）
     var s = findSpace(selection);
     if (s) drawSelection(s);
   }
@@ -1194,7 +1194,7 @@ canvas.addEventListener('pointerdown', function(e){
 
 canvas.addEventListener('pointermove', function(e){
   if (!drag){
-    canvas.style.cursor = cursorFor(hitTest(e.offsetX, e.offsetY));
+    canvas.style.cursor = doc.tool ? 'default' : cursorFor(hitTest(e.offsetX, e.offsetY));   // 工具激活：普通箭头（用户指定）
     return;
   }
   var dx = e.offsetX - drag.startX, dy = e.offsetY - drag.startY;
@@ -1464,6 +1464,8 @@ setTrackUI();
 function setToolUI(){
   document.getElementById('compDoor').classList.toggle('btn-on', doc.tool === 'door');
   document.getElementById('compWindow').classList.toggle('btn-on', doc.tool === 'window');
+  canvas.style.cursor = doc.tool ? 'default' : 'crosshair';   // 工具激活：普通箭头（用户指定）
+  requestRender();
 }
 document.getElementById('compDoor').addEventListener('click', function(){
   this.blur();
