@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARCHISONIC: UNFINISHED TOUR</title>
+<style>
+/* ============================================================
+   ARCHISONIC: UNFINISHED TOUR — M1 静态 UI 骨架
+   视觉规范：docs/03-设计规范.md（色板/字体/组件/布局）
+   ============================================================ */
+:root{
+  --paper:#D8D8D6;   /* 暖灰：窗口底/地板填充/主文字 */
+  --gray:#B5B5B3;    /* 中灰：次级边框/墙体/次级文字 */
+  --ink:#303030;     /* 深炭灰：页面底/画布底/标题条/描边 */
+  --acid:#B8E83E;    /* 荧光黄绿：选中/播放/主按钮/编号 */
+  --grid-minor:rgba(216,216,214,0.08);
+  --grid-major:rgba(216,216,214,0.18);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  min-width:720px;
+  background:var(--ink);
+  color:var(--paper);
+  font-family:'Courier New',monospace;
+  font-size:12px;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  user-select:none;
+  -webkit-user-select:none;
+}
+/* 全屏扫描线装饰层（不拦截事件） */
+body::after{
+  content:'';
+  position:fixed; inset:0; z-index:9999;
+  pointer-events:none;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0 1px, transparent 1px 3px);
+}
+/* ---------- 通用文字 ---------- */
+.mono{font-family:inherit}
+.dim{color:var(--gray)}
+
+/* ---------- 顶栏 ---------- */
+#topbar{
+  height:44px; flex:0 0 44px;
+  display:flex; align-items:center; gap:16px;
+  padding:0 12px;
+  background:var(--ink);
+  border-bottom:1px solid var(--gray);
+}
+.brand{display:flex; align-items:baseline; gap:10px; flex:0 0 auto}
+.brand-main{
+  font-family:Georgia,'Times New Roman',serif;
+  font-style:italic; font-size:22px;
+  color:var(--paper); letter-spacing:1px;
+}
+.brand-sub{font-size:10px; letter-spacing:0.2em; color:var(--gray)}
+.status{flex:1; display:flex; align-items:center; justify-content:center; gap:8px}
+.status-text{letter-spacing:0.08em; color:var(--paper)}
+/* 闪烁块 █ */
+.blink-block{
+  width:8px; height:8px; flex:0 0 8px;
+  background:var(--acid);
+  animation:blink 1s steps(2,start) infinite;
+}
+@keyframes blink{to{visibility:hidden}}
+.top-actions{flex:0 0 auto}
+
+/* ---------- 按钮 ---------- */
+.btn{
+  font-family:inherit; font-size:12px;
+  letter-spacing:0.08em; text-transform:uppercase;
+  height:24px; padding:0 12px;
+  background:var(--paper); color:var(--ink);
+  border:1px solid var(--ink);
+  cursor:pointer;
+}
+.btn:hover{background:var(--gray)}
+.btn:active{transform:translateY(1px)}
+/* 主按钮 PLAY（播放中变 STOP，M3 接线） */
+.btn-acid{
+  height:28px; padding:0 16px;
+  background:var(--acid); color:var(--ink);
+  border:2px solid var(--ink);
+  font-weight:bold;
+}
+.btn-acid:hover{background:var(--paper)}
+.btn-acid:active{transform:translateY(1px)}
+
+/* ---------- 模块化窗口 ---------- */
+.window{
+  position:relative;
+  display:flex; flex-direction:column;
+  background:var(--paper);
+  border:1px solid var(--ink);
+  box-shadow:0 0 0 1px var(--gray);   /* 外层 1px 中灰描边 */
+}
+.titlebar{
+  height:24px; flex:0 0 24px;
+  display:flex; align-items:center; gap:10px;
+  padding:0 8px;
+  background:var(--ink); color:var(--paper);
+  font-size:12px; letter-spacing:0.08em; text-transform:uppercase;
+}
+.titlebar .title-text{flex:1; white-space:nowrap; overflow:hidden}
+/* 标题条假按钮 [–][□][×] */
+.fake-btns{display:flex; gap:6px; flex:0 0 auto}
+.fake-btns span{color:var(--gray); cursor:default; line-height:1}
+.fake-btns span:hover{color:var(--acid)}
+.window-body{padding:8px; color:var(--ink); overflow:auto}
+
+/* 主窗口像素角（8×8 L 形，酸绿） */
+.floor-window::before{
+  content:''; position:absolute; top:-1px; left:-1px; z-index:2;
+  width:8px; height:8px;
+  border-top:2px solid var(--acid); border-left:2px solid var(--acid);
+}
+.floor-window::after{
+  content:''; position:absolute; bottom:-1px; right:-1px; z-index:2;
+  width:8px; height:8px;
+  border-bottom:2px solid var(--acid); border-right:2px solid var(--acid);
+}
+.pxc{position:absolute; width:8px; height:8px; z-index:2}
+.pxc-tr{top:-1px; right:-1px; border-top:2px solid var(--acid); border-right:2px solid var(--acid)}
+.pxc-bl{bottom:-1px; left:-1px; border-bottom:2px solid var(--acid); border-left:2px solid var(--acid)}
+
+/* ---------- 舞台与画布 ---------- */
+#stage{flex:1; min-height:0; padding:12px; display:flex}
+.floor-window{flex:1; min-height:420px}
+#canvasBody{flex:1; position:relative; padding:0; display:flex; min-height:0}
+#floorCanvas{
+  flex:1; display:block; width:100%; height:100%;
+  cursor:crosshair;
+  touch-action:none;
+}
+/* 空状态浮层 */
+.empty-overlay{
+  position:absolute; inset:0;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:8px;
+  pointer-events:none;
+}
+.eo-main{font-size:14px; letter-spacing:0.12em; color:var(--gray); animation:blink 2s steps(2,start) infinite}
+.eo-sub{font-size:11px; letter-spacing:0.08em; color:var(--gray)}
+
+/* ---------- 底部面板 ---------- */
+#bottom{
+  flex:0 0 auto;
+  display:flex; gap:8px;
+  padding:0 12px 8px;
+}
+#bottom .window{min-height:96px}
+#bottom .win-transport{flex:0 0 240px}
+#bottom .win-chords{flex:0 0 220px}
+#bottom .win-manual{flex:1}
+.transport-body{display:flex; flex-direction:column; gap:8px; justify-content:center}
+.vol-row{display:flex; align-items:center; gap:8px}
+.vol-row label{letter-spacing:0.08em}
+#volReadout{min-width:24px; text-align:right}
+.chords-body{font-size:11px; line-height:1.7}
+.manual-body{font-size:11px; line-height:1.7}
+
+/* ---------- 滑杆 ---------- */
+input[type=range]{
+  -webkit-appearance:none; appearance:none;
+  width:120px; height:14px;
+  background:transparent; cursor:pointer;
+}
+input[type=range]::-webkit-slider-runnable-track{height:2px; background:var(--ink)}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:10px; height:14px; margin-top:-6px;
+  background:var(--ink); border:1px solid var(--ink); border-radius:0;
+}
+input[type=range]:active::-webkit-slider-thumb{background:var(--acid)}
+input[type=range]::-moz-range-track{height:2px; background:var(--ink)}
+input[type=range]::-moz-range-thumb{
+  width:10px; height:14px;
+  background:var(--ink); border:1px solid var(--ink); border-radius:0;
+}
+input[type=range]:active::-moz-range-thumb{background:var(--acid)}
+
+/* ---------- 状态条 ---------- */
+#statusbar{
+  height:22px; flex:0 0 22px;
+  display:flex; align-items:center; gap:8px;
+  padding:0 12px;
+  background:var(--ink);
+  border-top:1px solid var(--gray);
+  color:var(--gray); font-size:11px; letter-spacing:0.08em;
+}
+#statusbar .blink-block{width:6px; height:6px; flex:0 0 6px}
+
+/* ---------- 断点 ---------- */
+@media (max-width:1100px){
+  #bottom{flex-wrap:wrap}
+  #bottom .window{flex:1 1 45%}
+}
+</style>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<header id="topbar">
+  <div class="brand">
+    <span class="brand-main">ARCHISONIC</span>
+    <span class="brand-sub">UNFINISHED TOUR</span>
+  </div>
+  <div class="status">
+    <span class="status-text" id="statusText">READY</span>
+    <span class="blink-block"></span>
+  </div>
+  <div class="top-actions">
+    <button class="btn btn-acid" id="playBtn" type="button">PLAY</button>
+  </div>
+</header>
+
+<!-- 舞台：FLOOR PLAN 主窗口 -->
+<main id="stage">
+  <div class="window floor-window">
+    <span class="pxc pxc-tr"></span>
+    <span class="pxc pxc-bl"></span>
+    <div class="titlebar">
+      <span class="fake-btns"><span>&#8211;</span><span>&#9633;</span><span>&#215;</span></span>
+      <span class="title-text">FLOOR PLAN — GRID 24PX · DRAG TO DRAW</span>
+    </div>
+    <div class="window-body" id="canvasBody">
+      <canvas id="floorCanvas"></canvas>
+      <div class="empty-overlay" id="emptyOverlay">
+        <p class="eo-main">EMPTY LOT. DRAG TO DRAW A RECTANGLE.</p>
+        <p class="eo-sub">PRESS [PLAY] TO HEAR THE CHORDS.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- 底部面板：三个模块窗口 -->
+<section id="bottom">
+  <div class="window win-transport">
+    <div class="titlebar"><span class="title-text">TRANSPORT</span></div>
+    <div class="window-body transport-body">
+      <div class="vol-row">
+        <label for="volSlider">VOL</label>
+        <input type="range" id="volSlider" min="0" max="100" value="70">
+        <span id="volReadout">70</span>
+      </div>
+      <div class="mono dim">KEY: C MAJOR</div>
+      <div class="mono dim" id="audioState">AUDIO: STANDBY</div>
+    </div>
+  </div>
+  <div class="window win-chords">
+    <div class="titlebar"><span class="title-text">CHORDS</span></div>
+    <div class="window-body mono chords-body" id="chordsBody">
+      1=C · 2=C,F · 3=DM,G,C<br>
+      4=DM,G,C,AM · 5+=LOOP
+    </div>
+  </div>
+  <div class="window win-manual">
+    <div class="titlebar"><span class="title-text">MANUAL</span></div>
+    <div class="window-body mono manual-body">
+      DRAG TO DRAW · CLICK TO SELECT<br>
+      DRAG HANDLES TO RESIZE · DEL TO DELETE<br>
+      CTRL+Z UNDO · ESC CANCEL · PLAY TO HEAR
+    </div>
+  </div>
+</section>
+
+<!-- 状态条 -->
+<footer id="statusbar">
+  <span id="spacesCount">SPACES: 00</span>
+  <span>·</span>
+  <span>KEY: C MAJOR</span>
+  <span>·</span>
+  <span id="statusTail">READY</span>
+  <span class="blink-block"></span>
+</footer>
+
+<script>
+/* ============================================================
+   ARCHISONIC: UNFINISHED TOUR — 脚本
+   架构：docs/02-技术方案.md（§A–§H 分节）
+   M1 范围：§A CONFIG / §B STATE / §E RENDER(网格) / §H INIT
+   ============================================================ */
+(function(){
+'use strict';
+
+/* §A CONFIG — 常量 */
+var GRID = 24;            // 小网格间距 px
+var GRID_MAJOR = 4;       // 每 4 格一条强调线
+var DPR_CAP = 2;          // devicePixelRatio 封顶（防 4K 开销）
+var MIN_SIZE = 16;        // 矩形最小尺寸（M2 使用）
+
+/* §B STATE — 文档状态（M2/M3 使用） */
+var doc = {
+  spaces: [],             // [{id, x, y, w, h}]，id 自增 = 创建顺序 = 播放顺序
+  nextId: 1,
+  masterVol: 0.7
+};
+var selection = null;     // 选中空间 id
+
+/* §E RENDER — 画布渲染 */
+var canvas = null, ctx = null;
+
+function fitCanvas(){
+  var body = document.getElementById('canvasBody');
+  var rect = body.getBoundingClientRect();
+  var dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+  canvas.width  = Math.max(1, Math.round(rect.width  * dpr));
+  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  canvas.style.width  = rect.width  + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // 之后全部按 CSS px 绘制
+  render();
+}
+
+function drawGrid(){
+  var w = canvas.clientWidth, h = canvas.clientHeight;
+  // 画布背景（深炭灰）
+  ctx.fillStyle = '#303030';
+  ctx.fillRect(0, 0, w, h);
+  // 24px 小网格
+  ctx.strokeStyle = 'rgba(216,216,214,0.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (var x = 0; x <= w; x += GRID){ ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, h); }
+  for (var y = 0; y <= h; y += GRID){ ctx.moveTo(0, y + 0.5); ctx.lineTo(w, y + 0.5); }
+  ctx.stroke();
+  // 96px 强调线
+  ctx.strokeStyle = 'rgba(216,216,214,0.18)';
+  ctx.beginPath();
+  for (var x2 = 0; x2 <= w; x2 += GRID * GRID_MAJOR){ ctx.moveTo(x2 + 0.5, 0); ctx.lineTo(x2 + 0.5, h); }
+  for (var y2 = 0; y2 <= h; y2 += GRID * GRID_MAJOR){ ctx.moveTo(0, y2 + 0.5); ctx.lineTo(w, y2 + 0.5); }
+  ctx.stroke();
+}
+
+function render(){
+  drawGrid();
+  /* M2：矩形（墙体/地板/分界线/编号）、选中态、橡皮筋 在此绘制 */
+  /* M3：播放高亮 在此绘制 */
+}
+
+/* §H INIT — 启动序列 */
+canvas = document.getElementById('floorCanvas');
+ctx = canvas.getContext('2d');
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
+if (window.ResizeObserver){
+  new ResizeObserver(fitCanvas).observe(document.getElementById('canvasBody'));
+}
+
+/* §C MAPPING（连接判定/进行分配）、§D AUDIO（PAD/混响/调度）、
+   §F INPUT（指针状态机）、§G UI（控件绑定） —— M2–M3 实现 */
+
+})();
+</script>
+</body>
+</html>
