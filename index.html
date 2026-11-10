@@ -43,6 +43,32 @@ body::after{
 .mono{font-family:inherit}
 .dim{color:var(--gray)}
 
+/* ---------- 公告弹窗（Alpha 1） ---------- */
+#announce{
+  position:fixed; inset:0; z-index:200;
+  background:rgba(48,48,48,0.6);
+  display:flex; align-items:center; justify-content:center;
+  transition:opacity 0.3s;
+}
+#announce.hide{opacity:0; pointer-events:none}
+.announce-window{width:420px; max-width:90%}
+.announce-body{display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px}
+.ann-title{
+  font-family:'IPix',monospace;
+  font-size:22px; letter-spacing:2px;
+  color:var(--ink); text-align:center;
+}
+.ann-ver{
+  font-family:'IPix',monospace;
+  font-size:12px; letter-spacing:0.3em;
+  color:var(--acid);
+}
+.ann-text{
+  font-family:'IPix',monospace;
+  font-size:12px; line-height:1.9;
+  color:var(--ink); text-align:center;
+}
+
 /* ---------- 开始菜单（启动画面） ---------- */
 #startMenu{
   position:fixed; inset:0; z-index:100;
@@ -283,6 +309,23 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
 </style>
 </head>
 <body>
+
+<!-- 公告（Alpha 1；OK 点击 = 用户手势，解锁 OST 播放） -->
+<div id="announce">
+  <div class="window announce-window">
+    <div class="titlebar"><span class="title-text">ARCHISONIC — ALPHA 1</span></div>
+    <div class="window-body announce-body">
+      <p class="ann-title">ARCHISONIC: unfinished tour</p>
+      <p class="ann-ver">ALPHA 1</p>
+      <p class="ann-text">
+        DRAG TO DRAW ROOMS — EACH ROOM IS A CHORD.<br>
+        DOORS = KICK + SNARE · WINDOWS = CYMBAL.<br>
+        PRESS [PLAY] TO HEAR THE TOUR.
+      </p>
+      <button class="btn btn-acid" id="announceOk" type="button">OK</button>
+    </div>
+  </div>
+</div>
 
 <!-- 开始菜单（启动画面） -->
 <div id="startMenu">
@@ -1477,6 +1520,16 @@ function startOst(){
 startOst();                                                     // 打开即尝试直接播放
 window.addEventListener('load', startOst);                       // 文档加载完成后再试一次
 document.getElementById('startMenu').addEventListener('pointerdown', startOst);   // 仍被浏览器拦截则首次点击静默兜底
+
+/* 公告：点 OK = 用户手势 → 解锁并开始 OST（用户方案） */
+var announce = document.getElementById('announce');
+announce.addEventListener('pointerdown', startOst);              // 公告上任何点击都先尝试解锁音频
+document.getElementById('announceOk').addEventListener('click', function(){
+  this.blur();
+  startOst();
+  announce.classList.add('hide');
+  setTimeout(function(){ announce.style.display = 'none'; }, 350);
+});
 document.getElementById('enterBtn').addEventListener('click', function(){
   this.blur();
   ensureAudio();   // 该点击即手势：顺带解锁应用音频

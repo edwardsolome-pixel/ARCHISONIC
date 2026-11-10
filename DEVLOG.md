@@ -80,6 +80,8 @@
 
 - 修复 OST 自动播放失败（用户报告，双浏览器复现）：play() 返回 Promise，此前 try/catch 捕获不到异步拒绝且失败也置 ostStarted 导致点击兜底被跳过——现改为 Promise 成功才置位、window load 再试一次、pointerdown 静默兜底；浏览器自动播放策略对 file:// 同样限制，向用户提供 chrome://flags/#autoplay-policy 一次性设置方案
 
+- 公告弹窗（用户方案，解决 OST 自动播放被浏览器拦截）：打开先弹「ARCHISONIC: unfinished tour / ALPHA 1」玩法介绍弹窗（暗遮罩+模块窗口），点 OK = 用户手势 → 解锁并开始 OST 播放，随后关闭公告进入主菜单
+
 ### 待办
 
 - [ ] M3 用户验收
