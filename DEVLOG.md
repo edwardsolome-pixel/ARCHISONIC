@@ -66,6 +66,8 @@
 
 - 鼓机完成（用户设计 + 拍板全部门窗汇总固定节奏）：16 步音序器（步长 spb/4 随 BPM）；门 → 强拍 0/8/4/12（底鼓+军鼓叠奏）；窗 → 弱拍 2/6/10/14 反拍八分（踩镲轻重交替）；808 风格纯合成（正弦扫频 kick / 噪声 bandpass snare / highpass hat）；鼓音频接入左侧「鼓」轨道——音量滑块即时生效、M 键即时静音；与键盘轨道独立；STOP 即停
 
+- 修复鼓无声（用户报告）：drumTrackGain 创建后漏接 masterGain——鼓 voice 全部经此节点输出却无下游，导致信号断链；已在 ensureAudio 中补接 drumTrackGain → masterGain
+
 ### 待办
 
 - [ ] M3 用户验收

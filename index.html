@@ -531,6 +531,7 @@ function ensureAudio(){
     comp.threshold.value = -14; comp.ratio.value = 3; comp.knee.value = 12;
     dryBus.connect(masterGain);
     convolver.connect(masterGain);
+    drumTrackGain.connect(masterGain);   // 鼓轨道 → 主总线（修复：此前漏接导致鼓无声）
     // 延时（delay）：BPM 同步附点八分，反馈不强（用户指定）
     delayLine = audioCtx.createDelay(1.0);
     delayLine.delayTime.value = 0.75 * (60 / doc.bpm);
