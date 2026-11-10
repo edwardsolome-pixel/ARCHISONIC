@@ -354,7 +354,7 @@ var HANDLE_HIT = 8;            // 手柄命中阈值 px
 var DRAG_THRESHOLD = 3;        // 拖拽成立阈值 px
 var WALL = 8;                  // 墙体厚度 px
 var MAX_UNDO = 100;            // 撤销栈上限
-var SLOT_BEATS = 8;            // 每和弦占 2 小节（8 拍），起点与节拍器重音对齐
+var SLOT_BEATS = 4;            // 每和弦占 1 小节（4 拍），起点与节拍器重音对齐（用户指定 1 小节）
 
 var COL = {                    // 色板（docs/03）
   CANVAS: '#B5B5B3',           // 画布背景（2026-11-10 修订）
@@ -500,7 +500,7 @@ function makeImpulse(seconds){
   for (var ch = 0; ch < 2; ch++){
     var d = buf.getChannelData(ch);
     for (var i = 0; i < len; i++){
-      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.0);
     }
   }
   return buf;
@@ -642,7 +642,7 @@ function schedulePass(t){
     var legato = isLast ? true : p.legato;   // 循环衔接：永远无缝（用户指定）
     // 和弦起点严格落在槽位（= 节拍器重音）；legato 靠长尾音交叠，断开靠提前收尾
     var gate = legato ? slot : (slot - 1 * spb);   // 断开：提前 1 拍收尾
-    var release = legato ? 3 * spb : 0.5 * spb;    // legato 尾音叠进下一和弦；断开留 0.5 拍停顿
+    var release = legato ? 1.5 * spb : 0.5 * spb;  // legato 尾音叠进下一和弦（1.5拍，与 1 小节槽位成比例）；断开留 0.5 拍停顿
     playChord(p.midi, step, gate, p.wet, p.dly, release);
     tourTimeline.push({ id: p.id, t: step, dur: slot });
     step += slot;                // 永远整槽位推进 → 与节拍器重音严格对齐
