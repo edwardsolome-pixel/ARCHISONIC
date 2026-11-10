@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(& \"E:\\\\Git\\\\cmd\\\\git.exe\" init)",
+      "PowerShell(& \"E:\\\\Git\\\\cmd\\\\git.exe\" config user.name \"Edwardsolome\")",
+      "PowerShell(& \"E:\\\\Git\\\\cmd\\\\git.exe\" config user.email \"edwardsolome@local\")",
+      "PowerShell(& \"E:\\\\Git\\\\cmd\\\\git.exe\" config user.name)",
+      "PowerShell(& \"E:\\\\Git\\\\cmd\\\\git.exe\" config user.email)"
+    ]
+  }
+}
