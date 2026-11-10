@@ -75,6 +75,12 @@ body::after{
 /* 音色选择按钮（TIMBRE 窗口） */
 .timbre-body{display:flex; flex-direction:column; gap:6px; padding:8px}
 .timbre-btn{width:100%; height:auto; padding:6px 8px; text-align:left; letter-spacing:0.05em}
+/* 轨道头（TRACKS 窗口） */
+.tracks-body{display:flex; flex-direction:column; gap:8px; padding:8px}
+.track-row{display:flex; align-items:center; gap:6px}
+.track-name{flex:0 0 auto; font-size:12px; letter-spacing:0.05em; color:var(--ink)}
+.track-row input[type=range]{width:70px}
+.track-mute{width:24px; height:24px; padding:0; flex:0 0 24px; text-align:center}
 
 /* ---------- 三角形 PLAY 按钮（播放中变方块 STOP） ---------- */
 .play-tri{
@@ -257,9 +263,20 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
         <span class="brand-text">ARCHISONIC</span>
       </div>
     </div>
-    <div class="window">
-      <div class="titlebar"><span class="title-text"></span></div>
-      <div class="window-body"></div>
+    <div class="window" id="tracksWindow">
+      <div class="titlebar"><span class="title-text">TRACKS</span></div>
+      <div class="window-body tracks-body">
+        <div class="track-row">
+          <span class="track-name">键盘</span>
+          <input type="range" id="keysVol" min="0" max="100" value="100">
+          <button class="btn track-mute" id="keysMuteBtn" type="button">M</button>
+        </div>
+        <div class="track-row">
+          <span class="track-name">鼓</span>
+          <input type="range" id="drumVol" min="0" max="100" value="100">
+          <button class="btn track-mute" id="drumMuteBtn" type="button">M</button>
+        </div>
+      </div>
     </div>
     <div class="window" id="timbreWindow">
       <div class="titlebar"><span class="title-text">TIMBRE</span></div>
@@ -395,7 +412,11 @@ var doc = {
   nextId: 1,
   masterVol: 0.7,
   bpm: 120,
-  timbre: 'classic'            // 'classic' 古典主义 | 'modern' 现代主义
+  timbre: 'classic',           // 'classic' 古典主义 | 'modern' 现代主义
+  keyVol: 1,                   // 键盘轨道音量 0–1
+  keyMuted: false,             // 键盘轨道静音
+  drumVol: 1,                  // 鼓轨道音量 0–1（鼓未实现，仅 UI）
+  drumMuted: false             // 鼓轨道静音（鼓未实现，仅 UI）
 };
 var selection = null;          // 选中空间 id
 var drag = null;               // 拖拽上下文 {mode, startX, startY, moved, ...}
@@ -527,15 +548,16 @@ function playClick(t, accent){
 function playChord(midiNotes, t0, durSec, wetGain, dlyGain, release){
   var end = t0 + durSec;
   var tm = TIMBRES[doc.timbre] || TIMBRES.classic;
+  var kv = doc.keyVol;         // 键盘轨道音量（0–1）
   var oscs = [];
-  // 公共包络：attack → sustain（可选衰减）→ release
+  // 公共包络：attack → sustain（可选衰减）→ release（峰值乘键盘轨道音量）
   var envGain = audioCtx.createGain();
   envGain.gain.setValueAtTime(0, t0);
-  envGain.gain.linearRampToValueAtTime(1, t0 + tm.attack);
+  envGain.gain.linearRampToValueAtTime(kv, t0 + tm.attack);
   if (tm.decay > 0){
-    envGain.gain.setTargetAtTime(tm.sustain, t0 + tm.attack, tm.decay);
+    envGain.gain.setTargetAtTime(tm.sustain * kv, t0 + tm.attack, tm.decay);
   }
-  envGain.gain.setValueAtTime(tm.sustain, end);
+  envGain.gain.setValueAtTime(tm.sustain * kv, end);
   envGain.gain.linearRampToValueAtTime(0, end + release);
   // lowpass 滤波（按音色）
   var lp = audioCtx.createBiquadFilter();
@@ -645,7 +667,7 @@ function schedulePass(t){
     // 和弦起点严格落在槽位（= 节拍器重音）；legato 靠长尾音交叠，断开靠提前收尾
     var gate = legato ? slot : (slot - 1 * spb);   // 断开：提前 1 拍收尾
     var release = legato ? 1.5 * spb : 0.5 * spb;  // legato 尾音叠进下一和弦（1.5拍，与 1 小节槽位成比例）；断开留 0.5 拍停顿
-    playChord(p.midi, step, gate, p.wet, p.dly, release);
+    if (!doc.keyMuted) playChord(p.midi, step, gate, p.wet, p.dly, release);   // 键盘静音：不发声但网格照常推进
     tourTimeline.push({ id: p.id, t: step, dur: slot });
     step += slot;                // 永远整槽位推进 → 与节拍器重音严格对齐
   }
@@ -1128,6 +1150,31 @@ document.getElementById('timbreModern').addEventListener('click', function(){
   this.blur(); doc.timbre = 'modern'; setTimbreUI();
 });
 setTimbreUI();
+
+/* TRACKS 轨道接线（鼓仅 UI，音频后续实现） */
+function setTrackUI(){
+  document.getElementById('keysMuteBtn').classList.toggle('btn-on', doc.keyMuted);
+  document.getElementById('drumMuteBtn').classList.toggle('btn-on', doc.drumMuted);
+}
+document.getElementById('keysMuteBtn').addEventListener('click', function(){
+  this.blur();
+  doc.keyMuted = !doc.keyMuted;
+  setTrackUI();
+});
+document.getElementById('drumMuteBtn').addEventListener('click', function(){
+  this.blur();
+  doc.drumMuted = !doc.drumMuted;
+  setTrackUI();
+});
+document.getElementById('keysVol').addEventListener('input', function(){
+  doc.keyVol = this.value / 100;
+});
+document.getElementById('drumVol').addEventListener('input', function(){
+  doc.drumVol = this.value / 100;
+});
+document.getElementById('keysVol').addEventListener('change', function(){ this.blur(); });
+document.getElementById('drumVol').addEventListener('change', function(){ this.blur(); });
+setTrackUI();
 
 /* PLAY 按钮与 VOLUME 滑杆接线 */
 document.getElementById('playBtn').addEventListener('click', function(){
