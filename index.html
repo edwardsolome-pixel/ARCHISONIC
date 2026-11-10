@@ -43,6 +43,47 @@ body::after{
 .mono{font-family:inherit}
 .dim{color:var(--gray)}
 
+/* ---------- 开始菜单（启动画面） ---------- */
+#startMenu{
+  position:fixed; inset:0; z-index:100;
+  background:var(--paper);            /* paper 底色，类画布 */
+  display:flex; align-items:center; justify-content:center;
+  transition:opacity 0.4s;
+}
+#startMenu.hide{opacity:0; pointer-events:none}
+.start-content{display:flex; flex-direction:column; align-items:center; gap:14px}
+.start-title{
+  font-family:'IPix',monospace;
+  font-size:64px; letter-spacing:4px;
+  color:var(--ink);
+  text-shadow:4px 4px 0 var(--gray);   /* 像素感硬阴影 */
+}
+.start-sub{
+  font-family:'IPix',monospace;
+  font-size:16px; letter-spacing:0.5em;   /* 宽字距（用户指定） */
+  margin-left:0.5em;                        /* 抵消尾部字距空隙，视觉居中 */
+  color:var(--ink);
+}
+.btn-start{
+  margin-top:10px;
+  font-family:'IPix',monospace;
+  font-size:20px; letter-spacing:0.2em;
+  padding:14px 28px;
+  background:var(--acid); color:var(--ink);
+  border:3px solid var(--ink);
+  box-shadow:6px 6px 0 var(--gray);          /* 像素硬阴影按钮 */
+  cursor:pointer;
+}
+.btn-start:hover{background:var(--paper)}
+.btn-start:active{transform:translate(3px,3px); box-shadow:3px 3px 0 var(--gray)}
+.start-hint{
+  margin-top:6px;
+  font-family:'IPix',monospace;
+  font-size:11px; letter-spacing:0.15em;
+  color:var(--gray);
+}
+.start-hint.gone{display:none}
+
 /* ---------- 顶栏（状态区） ---------- */
 #topbar{
   height:44px; flex:0 0 44px;
@@ -249,6 +290,17 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
 </style>
 </head>
 <body>
+
+<!-- 开始菜单（启动画面） -->
+<div id="startMenu">
+  <div class="start-content">
+    <h1 class="start-title">ARCHISONIC</h1>
+    <p class="start-sub">UNFINISHED TOUR</p>
+    <button class="btn-start" id="enterBtn" type="button">LETS DESIGN</button>
+    <p class="start-hint" id="startHint">CLICK ANYWHERE TO PLAY OST</p>
+  </div>
+</div>
+<audio id="ostAudio" src="OST/ARCHISONIC-%20demo-1.mp3" loop preload="auto"></audio>
 
 <!-- 顶栏：状态区 -->
 <header id="topbar">
@@ -1415,6 +1467,33 @@ window.addEventListener('resize', fitCanvas);
 if (window.ResizeObserver){
   new ResizeObserver(fitCanvas).observe(document.getElementById('canvasBody'));
 }
+/* 开始菜单：OST 背景乐（用户指定：进入应用后淡出停止） */
+var ost = document.getElementById('ostAudio');
+var ostStarted = false;
+ost.volume = 0.6;
+function startOst(){
+  if (ostStarted) return;
+  ostStarted = true;
+  try { ost.play(); } catch (err) {}   // 自动播放策略：首次手势才允许
+  var hint = document.getElementById('startHint');
+  if (hint) hint.classList.add('gone');
+}
+document.getElementById('startMenu').addEventListener('pointerdown', startOst);
+document.getElementById('enterBtn').addEventListener('click', function(){
+  this.blur();
+  ensureAudio();   // 该点击即手势：顺带解锁应用音频
+  // OST 淡出停止（用户确认）
+  var o = ost;
+  var fadeIv = setInterval(function(){
+    o.volume = Math.max(0, o.volume - 0.03);
+    if (o.volume <= 0){ clearInterval(fadeIv); o.pause(); }
+  }, 30);
+  var menu = document.getElementById('startMenu');
+  menu.classList.add('hide');
+  setTimeout(function(){ menu.style.display = 'none'; }, 450);
+  requestRender();
+});
+
 /* TIMBRE 音色选择 */
 function setTimbreUI(){
   document.getElementById('timbreClassic').classList.toggle('btn-on', doc.timbre === 'classic');
