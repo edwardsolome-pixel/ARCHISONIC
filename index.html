@@ -186,6 +186,9 @@ body::after{
 .vol-row{display:flex; align-items:center; gap:8px}
 .vol-row label{letter-spacing:0.08em}
 #volReadout{min-width:24px; text-align:right}
+.metro-row{display:flex; align-items:center; gap:8px}
+.btn-on{background:var(--acid); color:var(--ink)}
+.btn-on:hover{background:var(--paper)}
 .player-body{
   padding-top:20px;   /* 播放键同理略下沉，居中于 paper 方框 */
   display:flex; align-items:center; justify-content:center;
@@ -289,6 +292,14 @@ input[type=range]:active::-moz-range-thumb{background:var(--acid)}
         <input type="range" id="volSlider" min="0" max="100" value="70">
         <span id="volReadout">70</span>
       </div>
+      <div class="vol-row">
+        <label for="bpmSlider">BPM</label>
+        <input type="range" id="bpmSlider" min="60" max="200" value="120">
+        <span id="bpmReadout">120</span>
+      </div>
+      <div class="metro-row">
+        <button class="btn" id="metroBtn" type="button">METRO: OFF</button>
+      </div>
       <div class="mono dim">KEY: C MAJOR</div>
       <div class="mono dim" id="audioState">AUDIO: STANDBY</div>
     </div>
@@ -352,7 +363,8 @@ var COL = {                    // 色板（docs/03）
 var doc = {
   spaces: [],                  // [{id, x, y, w, h}]，id 自增 = 创建顺序 = 播放顺序
   nextId: 1,
-  masterVol: 0.7
+  masterVol: 0.7,
+  bpm: 120
 };
 var selection = null;          // 选中空间 id
 var drag = null;               // 拖拽上下文 {mode, startX, startY, moved, ...}
@@ -361,6 +373,9 @@ var CW = 0, CH = 0;            // 画布 CSS 尺寸（fitCanvas 刷新）
 var touring = false;           // 播放中（循环模式：直到 STOP 才停）
 var tourTimeline = [];         // 播放头时间线 [{id, t, dur}]（audio clock 绝对时间）
 var tourCurrentId = null;      // 当前发声空间 id（高亮用）
+var metroOn = false;           // 节拍器开关（仅播放时响）
+var metroNext = 0;             // 下一个节拍点的 audio clock 时间
+var metroBeat = 0;             // 节拍计数（每 4 拍一个重音）
 var loopPlan = [];             // 循环快照 [{id, midi, wet, legato}]（首尾 legato 循环判定）
 var loopPassStart = 0;         // 最近一遍的起点（audio clock）
 var loopPassDur = 0;           // 一遍总时长
@@ -454,6 +469,20 @@ function makeImpulse(seconds){
 
 function midiToFreq(m){ return 440 * Math.pow(2, (m - 69) / 12); }
 
+/* 节拍器点击：短促方波，每小节第一拍高音强调 */
+function playClick(t, accent){
+  var o = audioCtx.createOscillator();
+  o.type = 'square';
+  o.frequency.value = accent ? 1320 : 880;
+  var g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.22, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  o.connect(g);
+  g.connect(masterGain);
+  o.start(t);
+  o.stop(t + 0.07);
+}
+
 /* PAD voice：每音 saw×2 失谐 + triangle 低八度，慢起音，经混响发送 */
 function playChord(midiNotes, t0, durSec, wetGain, release){
   var end = t0 + durSec;
@@ -532,29 +561,33 @@ function startPlay(){
   tourTimeline = [];
   loopPassStart = audioCtx.currentTime + 0.2;
   loopPassDur = schedulePass(loopPassStart);
+  metroNext = audioCtx.currentTime + 0.05;
+  metroBeat = 0;
   loopTimer = setInterval(loopScheduler, 200);
   setPlayUI(true);
   requestRender();
   tourFrame();
 }
-/* 排一遍全部和弦（绝对时间），返回该遍总时长 */
+/* 排一遍全部和弦（绝对时间，时值按拍计算），返回该遍总时长 */
 function schedulePass(t){
+  var spb = 60 / doc.bpm;      // 本遍使用当前 BPM（下一遍用新值）
   var step = t;
-  var D = 3.0;
+  var D = 6 * spb;             // 每和弦 6 拍（120BPM 时 = 3.0s）
   var ev = loopPlan.slice();
   // 奇数个和弦：最后重复一遍末和弦，凑成偶数次再接入下一循环（用户指定）
   if (ev.length % 2 === 1){
     var last = ev[ev.length - 1];
+    last.legato = true;        // 原末和弦 → 重复和弦：无缝衔接（修复"空一下"，用户反馈）
     ev.push({ id: last.id, midi: last.midi, wet: last.wet, legato: true });
   }
   for (var i = 0; i < ev.length; i++){
     var p = ev[i];
     var isLast = (i === ev.length - 1);
     var legato = isLast ? true : p.legato;   // 循环衔接：永远无缝（用户指定）
-    var release = legato ? 1.6 : 0.9;        // legato 尾音交叠；断开对更快收尾让出停顿
+    var release = legato ? 3.2 * spb : 1.8 * spb;
     playChord(p.midi, step, D, p.wet, release);
     tourTimeline.push({ id: p.id, t: step, dur: D });
-    step += legato ? (D - 0.35) : (D + 1.4); // 衔接重叠 0.35s / 断开停顿 0.5s
+    step += legato ? (D - 0.7 * spb) : (D + 2.8 * spb);  // 重叠 0.7拍 / 停顿 1拍
   }
   return step - t;
 }
@@ -565,6 +598,15 @@ function loopScheduler(){
   if (now > loopPassStart + loopPassDur - 2.0){
     loopPassStart += loopPassDur;
     loopPassDur = schedulePass(loopPassStart);
+  }
+  // 节拍器（仅播放时响，用户确认）：按当前 BPM 持续排程点击
+  if (metroOn){
+    var spb = 60 / doc.bpm;
+    while (metroNext < now + 0.3){
+      playClick(metroNext, metroBeat % 4 === 0);   // 每小节第一拍高音强调
+      metroNext += spb;
+      metroBeat++;
+    }
   }
   while (tourTimeline.length && tourTimeline[0].t + tourTimeline[0].dur < now - 4){
     tourTimeline.shift();
@@ -946,7 +988,7 @@ function findSpace(id){
 /* 键盘：Delete / Ctrl+Z / Esc / Space */
 document.addEventListener('keydown', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON')) return;
   if (e.key === 'Delete' || e.key === 'Backspace'){
     if (selection !== null){
       e.preventDefault();
@@ -1012,6 +1054,21 @@ document.getElementById('volSlider').addEventListener('input', function(){
   doc.masterVol = this.value / 100;
   document.getElementById('volReadout').textContent = this.value;
   if (masterGain) masterGain.gain.value = Math.pow(doc.masterVol, 1.5) * 0.7;
+});
+document.getElementById('bpmSlider').addEventListener('input', function(){
+  doc.bpm = parseInt(this.value, 10);
+  document.getElementById('bpmReadout').textContent = this.value;
+});
+document.getElementById('metroBtn').addEventListener('click', function(){
+  metroOn = !metroOn;
+  if (metroOn){
+    if (!ensureAudio()){ metroOn = false; return; }
+    metroNext = audioCtx.currentTime + 0.05;
+    metroBeat = 0;
+  }
+  var b = document.getElementById('metroBtn');
+  b.textContent = metroOn ? 'METRO: ON' : 'METRO: OFF';
+  b.classList.toggle('btn-on', metroOn);
 });
 })();
 </script>
