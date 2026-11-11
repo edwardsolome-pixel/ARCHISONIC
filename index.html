@@ -145,6 +145,8 @@ body::after{
 
 /* ---------- 三角形 PLAY 按钮（播放中变方块 STOP） ---------- */
 .play-tri{
+  position:absolute; left:50%; top:50%;
+  transform:translate(-50%,-50%);   /* 固定中心点：PLAY/STOP 切换位置不偏移 */
   width:32px; height:30px;
   border:none; padding:0;
   background:var(--ink);
@@ -264,8 +266,10 @@ body::after{
 .btn-on{background:var(--acid); color:var(--ink)}
 .btn-on:hover{background:var(--paper)}
 .player-body{
-  padding-top:20px;   /* 播放键同理略下沉，居中于 paper 方框 */
-  display:flex; align-items:center; justify-content:center;
+  position:relative;
+  height:56px;        /* 固定高度：PLAY(32×30) / STOP(56×56) 切换不改变布局 */
+  margin-top:37px;    /* 下沉量：37 + 56/2 = 65px，与原先 PLAY 中心位置一致 */
+  padding:0;
   overflow:hidden;
 }
 .manual-body{font-size:11px; line-height:1.7}

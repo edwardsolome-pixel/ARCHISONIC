@@ -84,6 +84,8 @@
 
 - 字体随项目分发（用户要求，解决他人电脑无字体问题）：复制 IPix.ttf 到项目根目录，并生成 fonts.css 以 @font-face + base64 data URI 内置字体（file:// 直接引用 .ttf 会被浏览器 CORS 拦截，data URI 无此限制）；index.html 头部引入 fonts.css；任意电脑双击打开即显示像素字体
 
+- 修复 PLAY/STOP 中心不对齐（用户报告）：两态按钮尺寸不同（32×30 / 56×56）导致容器高度变化、居中点偏移约 13px——改为按钮绝对定位固定在容器中心，player-body 固定高度 56px + margin-top 37px，保持原 PLAY 中心位置（距 body 顶 65px），切换时不再有任何位移
+
 ### 待办
 
 - [ ] M3 用户验收
