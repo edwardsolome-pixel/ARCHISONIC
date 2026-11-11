@@ -88,6 +88,8 @@
 
 - 文档全量核对（用户要求）：逐行比对 index.html 与 docs/01–04 及 CLAUDE.md，修订全部偏差——音色实际参数（古典 attack 0.3 / 现代四层振荡器与 reverbScale 0.9）、窗白条（26×5 / rgba 0.5）、播放键绝对居中与固定高度、轨道滑块 110px、所有窗口统一酸绿外框（不再有"绿色标题条"）、数据模型（openings 与 doc 全字段）、撤销命令类型、效果路由经 keysTrackGain、OST/字体多文件结构、中文标签例外、里程碑状态与提交格式；代码未改动
 
+- 新增 docs/05-后续开发任务书（用户要求）：汇总后续待开发/待改进——和声系统（和弦库、句法生成、3/5/6/7 循环、布局种子、转调）、鼓组律动与无极复杂度、四风格音乐语言（古典=ambient / 现代=house / 粗野=techno / 高技=glitch）、Canvas 2D 轴测；含开源库调研（Tone.js 推荐、Tonal 可选、Three.js 暂缓、Tweakpane 不推荐、Strudel AGPL 不嵌入）；CLAUDE.md 与 docs/04 增加索引
+
 ### 待办
 
 - [ ] M3 用户验收
