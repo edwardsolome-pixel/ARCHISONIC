@@ -760,6 +760,7 @@ function buildDrumPattern(){
     var s = doc.spaces[i];
     for (var j = 0; j < s.openings.length; j++){
       var o = s.openings[j];
+      if (isOpeningOccluded(s, o)) continue;   // 墙被其他房间吞掉的开口不发声（所见即所听）
       if (o.type === 'door') doors.push(o); else wins.push(o);
     }
   }
@@ -1102,22 +1103,38 @@ function drawRubber(d){
   ctx.fillText('W:' + Math.round(w) + ' H:' + Math.round(h), tx, ty);
 }
 
+/* 开口中心点（按 side/t 计算） */
+function openingCenter(s, o){
+  if (o.side === 'n' || o.side === 's'){
+    return { x: s.x + o.t * s.w, y: (o.side === 'n') ? s.y : s.y + s.h };
+  }
+  return { x: (o.side === 'w') ? s.x : s.x + s.w, y: s.y + o.t * s.h };
+}
+/* 开口是否被其他房间遮盖：中心点落入对方矩形内缩 WALL/2 后的区域 → 墙已被吞掉
+   （内缩 4px 避免共边拼接时误判：共边处中心点正好在对方边界上） */
+function isOpeningOccluded(s, o){
+  var c = openingCenter(s, o);
+  var pad = WALL / 2;
+  for (var i = 0; i < doc.spaces.length; i++){
+    var sp = doc.spaces[i];
+    if (sp === s) continue;
+    if (c.x > sp.x + pad && c.x < sp.x + sp.w - pad &&
+        c.y > sp.y + pad && c.y < sp.y + sp.h - pad) return true;
+  }
+  return false;
+}
+
 /* 构件开口绘制：门 = 灰色门板条；窗 = 半透明白块 + 3 条黑线（用户指定样式） */
 function drawOpenings(){
   for (var i = 0; i < doc.spaces.length; i++){
     var s = doc.spaces[i];
     for (var j = 0; j < s.openings.length; j++){
       var o = s.openings[j];
+      if (isOpeningOccluded(s, o)) continue;   // 墙被吞掉 → 门窗不绘制（修复浮空）
       var horiz = (o.side === 'n' || o.side === 's');
       var len = openingLen(o.type);
-      var cx, cy;
-      if (horiz){
-        cx = s.x + o.t * s.w;
-        cy = (o.side === 'n') ? s.y : s.y + s.h;
-      } else {
-        cx = (o.side === 'w') ? s.x : s.x + s.w;
-        cy = s.y + o.t * s.h;
-      }
+      var c = openingCenter(s, o);
+      var cx = c.x, cy = c.y;
       if (o.type === 'door'){
         // 门：窄长灰色门板条（覆盖墙体 = 墙洞）
         ctx.fillStyle = '#B5B5B3';
@@ -1236,9 +1253,12 @@ function tryAddOpening(open){
   // 靠墙角点击时：自动放到能容纳开口的位置，距墙角交点预留 5px（用户指定）
   var half = (len / 2 + OPEN_MARGIN) / edgeLen;
   open.t = clamp(open.t, half, 1 - half);
+  // 新开口若会被其他房间遮盖（墙已被吞掉）→ 忽略，避免生成看不见也听不见的开口
+  if (isOpeningOccluded(s, { side: open.side, t: open.t, type: doc.tool })) return;
   for (var i = s.openings.length - 1; i >= 0; i--){
     var o = s.openings[i];
     if (o.side !== open.side) continue;
+    if (isOpeningOccluded(s, o)) continue;   // 被遮盖的开口不参与删除/重叠判定
     var dist = Math.abs(o.t - open.t) * edgeLen;
     if (dist < openingLen(o.type) / 2 + 4){
       // 点在已有门窗上 → 删除该门窗（用户指定：恢复点击删除功能）

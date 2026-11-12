@@ -90,6 +90,8 @@
 
 - 新增 docs/05-后续开发任务书（用户要求）：汇总后续待开发/待改进——和声系统（和弦库、句法生成、3/5/6/7 循环、布局种子、转调）、鼓组律动与无极复杂度、四风格音乐语言（古典=ambient / 现代=house / 粗野=techno / 高技=glitch）、Canvas 2D 轴测；含开源库调研（Tone.js 推荐、Tonal 可选、Three.js 暂缓、Tweakpane 不推荐、Strudel AGPL 不嵌入）；CLAUDE.md 与 docs/04 增加索引
 
+- 修复门窗浮空（用户报告）：墙体在重叠处被 evenodd 裁剪，但门窗无条件绘制 → 移到其他房间上时门窗浮空。新增 isOpeningOccluded（中心点落入其他房间内缩 4px 区域即视为被遮盖，共边拼接不误判），drawOpenings / buildDrumPattern / tryAddOpening 统一使用：被遮盖的门窗不显示、不发声、不参与交互；数据保留，移开房间后恢复
+
 ### 待办
 
 - [ ] M3 用户验收
